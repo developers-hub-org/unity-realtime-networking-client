@@ -346,7 +346,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 {
                     udp.socket.Close();
                 }
-                RealtimeNetworking.instance._Disconnected();
+                ThreadDispatcher.instance.Enqueue(() => RealtimeNetworking.instance._Disconnected());
             }
         }
 
