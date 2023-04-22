@@ -17,7 +17,15 @@ namespace DevelopersHub.RealtimeNetworking.Client
             // Try to connect the server
             RealtimeNetworking.Connect();
         }
-
+        
+        private void OnDestroy()
+        {
+            // Remove event listeners
+            RealtimeNetworking.OnDisconnectedFromServer -= Disconnected;
+            RealtimeNetworking.OnConnectingToServerResult -= ConnectResult;
+            RealtimeNetworking.OnPacketReceived -= PacketReceived;
+        }
+        
         private void Disconnected()
         {
             Debug.Log("Disconnected from server.");
