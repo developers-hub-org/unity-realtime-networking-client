@@ -11,24 +11,25 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
 		private static ThreadDispatcher _instance = null;
 		private static readonly Queue<Action> _queue = new Queue<Action>();
+		private static bool _initialized = false;
 		public static ThreadDispatcher instance { get { return _instance; } }
 
-		[RuntimeInitializeOnLoadMethod]
-		private static void Initialize()
+		[RuntimeInitializeOnLoadMethod] private static void Initialize()
 		{
+			if (_initialized) { return; }
+			_initialized = true;
+			_instance = FindObjectOfType<ThreadDispatcher>();
 			if (_instance == null)
 			{
 				_instance = new GameObject("ThreadDispatcher").AddComponent<ThreadDispatcher>();
 			}
+			DontDestroyOnLoad(_instance.gameObject);
 		}
 
 		private void Awake()
 		{
-			if (_instance == null)
-			{
-				_instance = this;
-				DontDestroyOnLoad(gameObject);
-			}
+			Initialize();
+			_queue.Clear();
 		}
 
 		private void OnDestroy()
