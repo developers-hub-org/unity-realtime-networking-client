@@ -3,65 +3,94 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System.Collections;
     using System.Collections.Generic;
     using UnityEngine;
+    using UnityEngine.UI;
 
     public class Demo : MonoBehaviour
     {
 
+        [SerializeField] private Text textLog = null;
+        [SerializeField] private Button buttonConnect = null;
+        [SerializeField] private Button buttonAuth = null;
+
         private void Start()
-        { 
+        {
             // Creating event listeners
             RealtimeNetworking.OnDisconnectedFromServer += Disconnected;
             RealtimeNetworking.OnConnectingToServerResult += ConnectResult;
             RealtimeNetworking.OnPacketReceived += PacketReceived;
+            RealtimeNetworking.OnAuthentication += RealtimeNetworking_OnAuthenticationResponse;        
 
-            // Try to connect the server
-            RealtimeNetworking.Connect();
+            buttonConnect.onClick.AddListener(ConnectClicked);
+            buttonAuth.onClick.AddListener(AuthClicked);
+            buttonConnect.interactable = true;
+            buttonAuth.interactable = false;
+            buttonConnect.gameObject.SetActive(true);
+            buttonAuth.gameObject.SetActive(true);
+
+            textLog.fontSize = (int)(Screen.height * 0.05f);
         }
-        
+
         private void OnDestroy()
         {
             // Remove event listeners
             RealtimeNetworking.OnDisconnectedFromServer -= Disconnected;
             RealtimeNetworking.OnConnectingToServerResult -= ConnectResult;
             RealtimeNetworking.OnPacketReceived -= PacketReceived;
+            RealtimeNetworking.OnAuthentication -= RealtimeNetworking_OnAuthenticationResponse;
         }
-        
+
+        private void ConnectClicked()
+        {
+            // Try to connect the server
+            buttonConnect.interactable = false;
+            RealtimeNetworking.Connect();
+        }
+
+        private void AuthClicked()
+        {
+            // Try to authenticate the player
+            buttonAuth.interactable = false;
+            RealtimeNetworking.Authenticate();
+        }
+
         private void Disconnected()
         {
-            Debug.Log("Disconnected from server.");
+            buttonConnect.interactable = true;
+            buttonAuth.interactable = false;
+            buttonConnect.gameObject.SetActive(true);
+            buttonAuth.gameObject.SetActive(true);
+            textLog.text = "Disconnected from server.";
         }
 
         private void ConnectResult(bool successful)
         {
             if (successful)
             {
-                Debug.Log("Connected to server successfully.");
-
-                // Send String Example
-                Sender.TCP_Send(123, "Hello world from " + SystemInfo.deviceName);
-
-                // Send Packet Example
-                Packet packet = new Packet();
-                packet.Write(666);
-                packet.Write("Foo Bar");
-                packet.Write(3.14f);
-                packet.Write(transform.rotation);
-                packet.Write(false);
-                Sender.TCP_Send(packet);
+                buttonAuth.interactable = true;
+                textLog.text = "Connected to server successfully.";
             }
             else
             {
-                Debug.Log("Failed to connect the server.");
+                buttonConnect.interactable = true;
+                textLog.text = "Failed to connect the server.";
             }
         }
 
         private void PacketReceived(Packet packet)
         {
-            int code = packet.ReadInt();
-            if(code == 555)
+            textLog.text = "Packet received from the server.";
+        }
+
+        private void RealtimeNetworking_OnAuthenticationResponse(RealtimeNetworking.AuthenticationResponse response)
+        {
+            if(response == RealtimeNetworking.AuthenticationResponse.SUCCESSFULL)
             {
-                string time = packet.ReadString();
-                Debug.Log("Server Time: " + time);
+                textLog.text = "Authenticated the player successfully. Account id: " + RealtimeNetworking.accountID.ToString();
+            }
+            else
+            {
+                buttonAuth.interactable = true;
+                textLog.text = "Failed to authenticate the player. Code: " + response;
             }
         }
 
