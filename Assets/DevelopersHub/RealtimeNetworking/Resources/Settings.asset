@@ -14,3 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _ip: 127.0.0.1
   _port: 5555
+  prefabs:
+  - {fileID: 8179720575216243064, guid: 67b9a9aa070ff444dbbd3328dd82fa5d, type: 3}

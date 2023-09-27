@@ -1,5 +1,6 @@
 namespace DevelopersHub.RealtimeNetworking.Client
 {
+    using System;
     using System.Collections.Generic;
     using UnityEngine;
     using UnityEngine.SceneManagement;
@@ -40,15 +41,34 @@ namespace DevelopersHub.RealtimeNetworking.Client
         #endregion
 
         private bool _initialized = false;
-        private bool _authenticated = false;
-        private bool _connected = false;
+        private bool _authenticated = false; public static bool isAuthenticated { get { return instance._authenticated; } }
+        private bool _connected = false; public static bool isConnected { get { return instance._connected; } }
+        private bool _inGame = false; public static bool isGameStarted { get { return instance._inGame; } }
         private long _accountID = -1; public static long accountID { get { return instance._accountID; } }
 
         private string _usernameKey = "username";
         private string _passwordKey = "password";
 
-        private Scene _scene = default;
-        private NetworkObject[] _objects = null;
+        private Scene _scene = default; public static int sceneIndex { get { return instance._scene.buildIndex; } }
+        private List<NetworkObject> _sceneObjects = new List<NetworkObject>();
+        private List<ObjectsData> _globalObjects = new List<ObjectsData>();
+        private HashSet<long> _disconnected = new HashSet<long>();
+        private Data.Room _gameRoom = null;
+        private int _ticksPerSecond = 10;
+        private int _ticksCalled = 0;
+        private float _ticksTimer = 0;
+
+        private class ObjectsData
+        {
+            public int sceneIndex = 0;
+            public List<SceneObjectsData> accounts = new List<SceneObjectsData>();
+        }
+
+        private class SceneObjectsData
+        {
+            public long accountID = -1;
+            public List<NetworkObject.Data> objects = new List<NetworkObject.Data>();
+        }
 
         private string password
         {
@@ -108,7 +128,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private void Awake()
         {
             _scene = SceneManager.GetActiveScene();
-            _objects = FindObjectsOfType<NetworkObject>();
+            _sceneObjects.Clear();
+            NetworkObject[] obj = FindObjectsOfType<NetworkObject>(true);
+            if(obj != null)
+            {
+                _sceneObjects.AddRange(obj);
+            }
         }
 
         private void Initialize()
@@ -130,10 +155,174 @@ namespace DevelopersHub.RealtimeNetworking.Client
             SceneManager.sceneLoaded -= OnSceneLoaded;
         }
 
+        private void Update()
+        {
+            if(_connected && _authenticated && _inGame)
+            {
+                _ticksTimer += Time.deltaTime;
+                int ticks = Mathf.FloorToInt(_ticksTimer * _ticksPerSecond);
+                if(ticks > _ticksCalled)
+                {
+                    _ticksCalled++;
+                    Tick();
+                }
+                if (_ticksCalled >= _ticksPerSecond)
+                {
+                    _ticksCalled = 0;
+                    _ticksTimer = 0;
+                }
+            }
+        }
+
+        private void Tick()
+        {
+            if (_sceneObjects != null && _sceneObjects.Count > 0)
+            {
+                List<NetworkObject.Data> syncObjects = new List<NetworkObject.Data>();
+                for (int i = _sceneObjects.Count - 1; i >= 0; i--)
+                {
+                    if(_sceneObjects[i] != null && _sceneObjects[i])
+                    {
+                        if (_sceneObjects[i].isOwner && _sceneObjects[i].isActiveAndEnabled)
+                        {
+                            NetworkObject.Data data = _sceneObjects[i].GetData();
+                            if(data != null)
+                            {
+                                syncObjects.Add(data);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _sceneObjects.RemoveAt(i);
+                    }
+                }
+                if (syncObjects.Count > 0)
+                {
+                    byte[] data = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(syncObjects));
+                    Packet packet = new Packet();
+                    packet.Write((int)InternalID.SYNC_ROOM_PLAYER);
+                    packet.Write(sceneIndex);
+                    packet.Write(data.Length);
+                    packet.Write(data);
+                    SendUDPDataInternal(packet);
+                }
+            }
+        }
+
+        private void TickReceived(byte[] data, int scene, long account)
+        {
+            if (_disconnected.Contains(account))
+            {
+                return;
+            }
+            List<NetworkObject.Data> syncObjects = Tools.Desrialize<List<NetworkObject.Data>>(Tools.Decompress(data));
+            int s = -1;
+            for (int i = 0; i < _globalObjects.Count; i++)
+            {
+                if (_globalObjects[i].sceneIndex == scene)
+                {
+                    s = i;
+                    break;
+                }
+            }
+            if(s < 0)
+            {
+                ObjectsData newData = new ObjectsData();
+                newData.accounts = new List<SceneObjectsData>();
+                newData.sceneIndex = scene;
+                s = _globalObjects.Count;
+                _globalObjects.Add(newData);
+            }
+            int a = -1;
+            for (int i = 0; i < _globalObjects[s].accounts.Count; i++)
+            {
+                if (_globalObjects[s].accounts[i].accountID == account)
+                {
+                    a = i;
+                    break;
+                }
+            }
+            if (a < 0)
+            {
+                SceneObjectsData newData = new SceneObjectsData();
+                newData.objects = new List<NetworkObject.Data>();
+                newData.accountID = account;
+                a = _globalObjects[s].accounts.Count;
+                _globalObjects[s].accounts.Add(newData);
+            }
+            if (scene == sceneIndex)
+            {
+                int o = 0;
+                for (int i = 0; i < _sceneObjects.Count; i++)
+                {
+                    bool found = false;
+                    for (int j = o; j < syncObjects.Count; j++)
+                    {
+                        if (syncObjects[j].id == _sceneObjects[i].id)
+                        {
+                            NetworkObject.Data taragetData = syncObjects[j];
+
+                            for (int k = j; k > o; k--)
+                            {
+                                syncObjects[k] = syncObjects[k - 1];
+                            }
+                            syncObjects[o] = taragetData;
+                            // syncObjects.RemoveAt(j);
+                            // syncObjects.Insert(o, taragetData);
+
+                            o++;
+                            found = true;
+                            _sceneObjects[i]._ApplyData(taragetData);
+                            break;
+                        }
+                    }
+                    if(!found && _sceneObjects[i].ownerID == account)
+                    {
+                        // Delete the object without data
+                        Destroy(_sceneObjects[i].gameObject);
+                    }
+                }
+                for (int i = _sceneObjects.Count - 1; i >= 0; i--)
+                {
+                    if (_sceneObjects[i] != null) { continue; }
+                    _sceneObjects.RemoveAt(i);
+                }
+                if (o < syncObjects.Count)
+                {
+                    for (int i = o; i < syncObjects.Count; i++)
+                    {
+                        // Instantiate the data without object
+                        if (syncObjects[i].prefab >= 0 && syncObjects[i].prefab < Client.instance.settings.prefabs.Length && Client.instance.settings.prefabs[syncObjects[i].prefab] != null)
+                        {
+                            NetworkObject networkObject = Instantiate(Client.instance.settings.prefabs[syncObjects[i].prefab], syncObjects[i].transform.position, syncObjects[i].transform.rotation);
+                            networkObject.id = syncObjects[i].id;
+                            networkObject.prefabIndex = syncObjects[i].prefab;
+                            networkObject.transform.localScale = syncObjects[i].transform.scale;
+                            networkObject._Initialize(account, syncObjects[i].destroy);
+                            Rigidbody rb = networkObject.GetComponent<Rigidbody>();
+                            if(rb != null)
+                            {
+                                rb.velocity = syncObjects[i].transform.velocity;
+                            }
+                            // Keep track of networkObject in a list and instantiate it after leaving and coming back to scene
+                            _sceneObjects.Add(networkObject);
+                        }
+                    }
+                }
+            }
+            _globalObjects[s].accounts[a].objects = syncObjects;
+        }
+
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             _scene = scene;
-            _objects = FindObjectsOfType<NetworkObject>();
+            _sceneObjects.Clear();
+            NetworkObject[] obj = FindObjectsOfType<NetworkObject>(true);
+            if (obj != null)
+            {
+                _sceneObjects.AddRange(obj);
+            }
         }
 
         public static void Connect()
@@ -152,6 +341,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public void _Disconnected()
         {
+            _globalObjects.Clear();
+            _inGame = false;
+            _gameRoom = null;
             _connected = false;
             _accountID = -1;
             _authenticated = false;
@@ -167,11 +359,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 OnPacketReceived.Invoke(packet);
             }
-        }
-
-        private enum InternalID
-        {
-            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_PLAYER = 11
         }
 
         private static void SendTCPDataInternal(Packet _packet)
@@ -236,45 +423,45 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                     break;
                 case InternalID.GET_ROOMS:
-                    int gtRoomsBytesLen = packet.ReadInt();
-                    byte[] gtRoomsBytes = packet.ReadBytes(gtRoomsBytesLen);
-                    List<Data.Room> gtRooms = Tools.Desrialize< List<Data.Room>>(Tools.Decompress(gtRoomsBytes));
-                    packet.Dispose();
                     if (OnGetRooms != null)
                     {
+                        int gtRoomsBytesLen = packet.ReadInt();
+                        byte[] gtRoomsBytes = packet.ReadBytes(gtRoomsBytesLen);
+                        List<Data.Room> gtRooms = Tools.Desrialize<List<Data.Room>>(Tools.Decompress(gtRoomsBytes));
                         OnGetRooms.Invoke(GetRoomsResponse.SUCCESSFULL, gtRooms);
                     }
+                    packet.Dispose();
                     break;
                 case InternalID.JOIN_ROOM:
-                    int jnRoomRes = packet.ReadInt();
-                    Data.Room jnRoom = null;
-                    if (jnRoomRes == (int)JoinRoomResponse.SUCCESSFULL)
-                    {
-                        int jnRoomBytesLen = packet.ReadInt();
-                        byte[] jnRoomBytes = packet.ReadBytes(jnRoomBytesLen);
-                        jnRoom = Tools.Desrialize<Data.Room>(Tools.Decompress(jnRoomBytes));
-                    }
-                    packet.Dispose();
                     if (OnJoinRoom != null)
                     {
+                        int jnRoomRes = packet.ReadInt();
+                        Data.Room jnRoom = null;
+                        if (jnRoomRes == (int)JoinRoomResponse.SUCCESSFULL)
+                        {
+                            int jnRoomBytesLen = packet.ReadInt();
+                            byte[] jnRoomBytes = packet.ReadBytes(jnRoomBytesLen);
+                            jnRoom = Tools.Desrialize<Data.Room>(Tools.Decompress(jnRoomBytes));
+                        }
                         OnJoinRoom.Invoke((JoinRoomResponse)jnRoomRes, jnRoom);
                     }
+                    packet.Dispose();
                     break;
                 case InternalID.LEAVE_ROOM:
-                    int lvRoomRes = packet.ReadInt();
-                    packet.Dispose();
                     if (OnLeaveRoom != null)
                     {
+                        int lvRoomRes = packet.ReadInt();
                         OnLeaveRoom.Invoke((LeaveRoomResponse)lvRoomRes);
                     }
+                    packet.Dispose();
                     break;
                 case InternalID.DELETE_ROOM:
-                    int deRoomRes = packet.ReadInt();
-                    packet.Dispose();
                     if (OnDeleteRoom != null)
                     {
+                        int deRoomRes = packet.ReadInt();
                         OnDeleteRoom.Invoke((DeleteRoomResponse)deRoomRes);
                     }
+                    packet.Dispose();
                     break;
                 case InternalID.ROOM_UPDATED:
                     int upRoomTyp = packet.ReadInt();
@@ -296,6 +483,37 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
 
                     packet.Dispose();
+
+                    if (upRoomTyp == (int)RoomUpdateType.PLAYER_KICKED)
+                    {
+                        if(upTargetPlayer.id == accountID)
+                        {
+                            _inGame = false;
+                        }
+                        PlayerLeftGame(upTargetPlayer.id);
+                    }
+                    else if (upRoomTyp == (int)RoomUpdateType.PLAYER_LEFT)
+                    {
+                        if (upPlayer.id == accountID)
+                        {
+                            _inGame = false;
+                        }
+                        PlayerLeftGame(upPlayer.id);
+                    }
+                    else if (upRoomTyp == (int)RoomUpdateType.ROOM_DELETED)
+                    {
+                        _inGame = false;
+                    }
+                    else if (upRoomTyp == (int)RoomUpdateType.GAME_STARTED)
+                    {
+                        _globalObjects.Clear();
+                        _inGame = true;
+                        _ticksTimer = 0;
+                        _ticksCalled = 0;
+                        _gameRoom = upRoom;
+                        _disconnected.Clear();
+                    }
+
                     if (OnRoomUpdated != null)
                     {
                         OnRoomUpdated.Invoke((RoomUpdateType)upRoomTyp, upRoom, upPlayer, upTargetPlayer);
@@ -326,57 +544,49 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         OnRoomStartGame.Invoke((StartRoomResponse)stRoomRes);
                     }
                     break;
+                case InternalID.SYNC_ROOM_PLAYER:
+                    int syScene = packet.ReadInt();
+                    long syAccount = packet.ReadLong();
+                    int syDataLen = packet.ReadInt();
+                    byte[] syData = packet.ReadBytes(syDataLen);
+                    packet.Dispose();
+                    TickReceived(syData, syScene, syAccount);
+                    break;
             }
         }
 
-        public enum AuthenticationResponse
+        private void PlayerLeftGame(long id)
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_AUTHENTICATED = 4, USERNAME_TAKEN = 5, WRONG_CREDS = 6, BANNED = 7, INVALID_INPUT = 8
-        }
-
-        public enum CreateRoomResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4, INVALID_SCENE = 5
-        }
-
-        public enum GetRoomsResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3
-        }
-
-        public enum JoinRoomResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4, WRONG_PASSWORD = 5, AT_FULL_CAPACITY = 6, ALREADY_GAME_STARTED = 7
-        }
-
-        public enum LeaveRoomResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4
-        }
-
-        public enum DeleteRoomResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5
-        }
-
-        public enum RoomUpdateType
-        {
-            UNKNOWN = 0, ROOM_DELETED = 1, PLAYER_JOINED = 2, PLAYER_LEFT = 3, PLAYER_STATUS_CHANGED = 4, PLAYER_KICKED = 5, GAME_STARTED = 6
-        }
-
-        public enum KickFromRoomResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, TARGET_NOT_FOUND = 6
-        }
-
-        public enum RoomStatusResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, ALREADY_IN_THAT_STATUS = 5
-        }
-
-        public enum StartRoomResponse
-        {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6
+            _disconnected.Add(id);
+            for (int i = 0; i < _globalObjects.Count; i++)
+            {
+                for (int j = _globalObjects[i].accounts.Count - 1; j >= 0; j--)
+                {
+                    if (_globalObjects[i].accounts[j].accountID == id)
+                    {
+                        for (int k = _globalObjects[i].accounts[j].objects.Count - 1; k >= 0; k--)
+                        {
+                            if (_globalObjects[i].accounts[j].objects[k].destroy)
+                            {
+                                _globalObjects[i].accounts[j].objects.RemoveAt(k);
+                            }
+                        }
+                        if (_globalObjects[i].accounts.Count <= 0)
+                        {
+                            _globalObjects[i].accounts.RemoveAt(j);
+                        }
+                        break;
+                    }
+                }
+            }
+            for (int i = _sceneObjects.Count - 1; i >= 0; i--)
+            {
+                if (_sceneObjects[i].ownerID == id && _sceneObjects[i].destroyOnLeave)
+                {
+                    Destroy(_sceneObjects[i].gameObject);
+                    _sceneObjects.RemoveAt(i);
+                }
+            }
         }
 
         public static void Authenticate()
@@ -434,12 +644,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static void CreateRoom(int sceneIndex)
+        public static void CreateRoom(int gameID, int team)
         {
-            CreateRoom(sceneIndex, "");
+            CreateRoom(gameID, team, "");
         }
 
-        public static void CreateRoom(int sceneIndex, string password)
+        public static void CreateRoom(int gameID, int team, string password)
         {
             if (!instance._connected)
             {
@@ -457,14 +667,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
             else
             {
-                if (sceneIndex >= SceneManager.sceneCountInBuildSettings)
-                {
-                    if (OnCreateRoom != null)
-                    {
-                        OnCreateRoom.Invoke(CreateRoomResponse.INVALID_SCENE, null);
-                    }
-                    return;
-                }
                 if (!string.IsNullOrEmpty(password))
                 {
                     password = Tools.EncrypteToMD5(password);
@@ -472,7 +674,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 Packet packet = new Packet();
                 packet.Write((int)InternalID.CREATE_ROOM);
                 packet.Write(password);
-                packet.Write(sceneIndex);
+                packet.Write(gameID);
+                packet.Write(team);
                 SendTCPDataInternal(packet);
             }
         }
@@ -501,12 +704,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static void JoinRoom(string roomID)
+        public static void JoinRoom(string roomID, int team)
         {
-            JoinRoom(roomID, "");
+            JoinRoom(roomID, team, "");
         }
 
-        public static void JoinRoom(string roomID, string password)
+        public static void JoinRoom(string roomID, int team, string password)
         {
             if (!instance._connected)
             {
@@ -532,6 +735,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 packet.Write((int)InternalID.JOIN_ROOM);
                 packet.Write(roomID);
                 packet.Write(password);
+                packet.Write(team);
                 SendTCPDataInternal(packet);
             }
         }
@@ -656,6 +860,81 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 packet.Write((int)InternalID.START_ROOM);
                 SendTCPDataInternal(packet);
             }
+        }
+
+        public static NetworkObject Instantiate(int prefabIndex, Vector3 position, Quaternion rotation, bool own = true, bool destroyOnLeave = false)
+        {
+            return instance._Instantiate(prefabIndex, position, rotation, own, destroyOnLeave);
+        }
+
+        private NetworkObject _Instantiate(int prefabIndex, Vector3 position, Quaternion rotation, bool own, bool destroyOnLeave)
+        {
+            NetworkObject _object = null;
+            if (prefabIndex >= 0 && prefabIndex < Client.instance.settings.prefabs.Length && Client.instance.settings.prefabs[prefabIndex] != null)
+            {
+                _object = Instantiate(Client.instance.settings.prefabs[prefabIndex], position, rotation);
+                _object.id = Guid.NewGuid().ToString();
+                _object.prefabIndex = prefabIndex;
+                _object._Initialize(own ? accountID : -1, destroyOnLeave);
+                _sceneObjects.Add(_object);
+                // Keep track of _object in a list and instantiate it after leaving and coming back to scene
+            }
+            return _object;
+        }
+
+        private enum InternalID
+        {
+            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11
+        }
+
+        public enum AuthenticationResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_AUTHENTICATED = 4, USERNAME_TAKEN = 5, WRONG_CREDS = 6, BANNED = 7, INVALID_INPUT = 8
+        }
+
+        public enum CreateRoomResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4
+        }
+
+        public enum GetRoomsResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3
+        }
+
+        public enum JoinRoomResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4, WRONG_PASSWORD = 5, AT_FULL_CAPACITY = 6, ALREADY_GAME_STARTED = 7
+        }
+
+        public enum LeaveRoomResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4
+        }
+
+        public enum DeleteRoomResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5
+        }
+
+        public enum RoomUpdateType
+        {
+            UNKNOWN = 0, ROOM_DELETED = 1, PLAYER_JOINED = 2, PLAYER_LEFT = 3, PLAYER_STATUS_CHANGED = 4, PLAYER_KICKED = 5, GAME_STARTED = 6
+        }
+
+        public enum KickFromRoomResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, TARGET_NOT_FOUND = 6
+        }
+
+        public enum RoomStatusResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, ALREADY_IN_THAT_STATUS = 5
+        }
+
+        public enum StartRoomResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6
         }
 
     }

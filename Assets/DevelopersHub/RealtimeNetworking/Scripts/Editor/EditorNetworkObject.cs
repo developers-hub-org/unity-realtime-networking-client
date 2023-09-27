@@ -23,16 +23,19 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 GenerateID();
             }
-            NetworkObject[] networkObjects = FindObjectsOfType<NetworkObject>();
-            if (networkObjects != null && networkObjects.Length > 0)
+            if (!Application.isPlaying)
             {
-                for (int i = 0; i < networkObjects.Length; i++)
+                NetworkObject[] networkObjects = FindObjectsOfType<NetworkObject>();
+                if (networkObjects != null && networkObjects.Length > 0)
                 {
-                    if (networkObjects[i] == networkObject) { continue; }
-                    if (networkObjects[i].id == networkObject.id)
+                    for (int i = 0; i < networkObjects.Length; i++)
                     {
-                        GenerateID();
-                        break;
+                        if (networkObjects[i] == networkObject) { continue; }
+                        if (networkObjects[i].id == networkObject.id)
+                        {
+                            GenerateID();
+                            break;
+                        }
                     }
                 }
             }

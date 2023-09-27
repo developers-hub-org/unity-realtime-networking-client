@@ -12,6 +12,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         [Tooltip("Server port number.")]
         [SerializeField] private int _port = 5555; public int port { get { return _port; } }
+        
+        [Space]
+        [SerializeField] public NetworkObject[] prefabs = null;
 
         #if UNITY_EDITOR
         [UnityEditor.MenuItem("Developers Hub/Realtime Networking/Settings")]
