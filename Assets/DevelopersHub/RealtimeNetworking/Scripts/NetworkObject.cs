@@ -2,6 +2,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 {
     using System.Collections;
     using System.Collections.Generic;
+    using System.Reflection;
     using UnityEngine;
 
     public class NetworkObject : MonoBehaviour
@@ -12,9 +13,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
         [SerializeField] private bool _syncTransform = true;
         private float _positionLerpTime = 0.05f;
         private float _rotationLerpTime = 0.05f;
+        [Tooltip("Sync animation is srill experimental and only syncs the animator parameters except trigger.")]
         [SerializeField] private bool _syncAnimation = true;
 
-        private long _ownerID = -1; public bool isOwner { get { return (_ownerID >= 0 && _ownerID == RealtimeNetworking.accountID); } }
+        private long _ownerID = -1; public bool isOwner { get { return (_ownerID >= 0 && _ownerID == RealtimeNetworking.accountID) || (_ownerID < 0 && RealtimeNetworking.isSceneHost); } }
         public long ownerID { get { return _ownerID; } }
 
         private Vector3 _origionPosition = Vector3.zero;
@@ -30,6 +32,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private Vector3 _moveVelocity = Vector3.one;
         private float _rotateVelocity = 0;
         private int _prefabIndex = -1; public int prefabIndex { get { return _prefabIndex; } set { _prefabIndex = value; } }
+        private bool _destroying = false; public bool isDestroying { get { return _destroying; } }
+
+        MonoBehaviour[] mono = null;
 
         private void Start()
         {
@@ -41,6 +46,15 @@ namespace DevelopersHub.RealtimeNetworking.Client
             _targetScale = transform.localScale;
             _animator = GetComponent<Animator>();
             _rigidbody = GetComponent<Rigidbody>();
+            if(gameObject.isStatic)
+            {
+                _syncTransform = false;
+            }
+            if (_animator == null)
+            {
+                _syncAnimation = false;
+            }
+            mono = GetComponents<MonoBehaviour>();
         }
 
         private void Update()
@@ -74,6 +88,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        private void OnDestroy()
+        {
+            _destroying = true;
+            RealtimeNetworking.instance._DestroyObject(this);
+        }
+
         public Data GetData()
         {
             if(!_syncTransform && (!_syncAnimation || _animator == null))
@@ -97,8 +117,60 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
             if (_syncAnimation && _animator != null)
             {
-                data.animation = new AnimationData();
-
+                if(_animator.parameters.Length > 0)
+                {
+                    data.animation = new AnimationData();
+                    for (int i = 0; i < _animator.parameters.Length; i++)
+                    {
+                        Parameter parameter = new Parameter();
+                        parameter.name = _animator.parameters[i].name;
+                        parameter.type = (int)_animator.parameters[i].type;
+                        switch (_animator.parameters[i].type)
+                        {
+                            case AnimatorControllerParameterType.Float:
+                                parameter.value = _animator.parameters[i].defaultFloat;
+                                break;
+                            case AnimatorControllerParameterType.Int:
+                                parameter.value = _animator.parameters[i].defaultInt;
+                                break;
+                            case AnimatorControllerParameterType.Bool:
+                                parameter.value = _animator.parameters[i].defaultBool;
+                                break;
+                            case AnimatorControllerParameterType.Trigger:
+                                parameter.value = 0;
+                                break;
+                        }
+                        data.animation.parameters.Add(parameter);
+                    }
+                }
+            }
+            if (mono != null && mono.Length > 0)
+            {
+                for (int m = 0; m < mono.Length; m++)
+                {
+                    if (mono[m] == null || mono[m] == this) { continue; }
+                    FieldInfo[] objectFields = mono[m].GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    ScriptData vd = new ScriptData();
+                    vd.name = mono[m].name;
+                    for (int f = 0; f < objectFields.Length; f++)
+                    {
+                        if (PropertyAttribute.GetCustomAttribute(objectFields[f], typeof(SyncVariable)) != null)
+                        {
+                            if(data.scripts == null)
+                            {
+                                data.scripts = new List<ScriptData>();
+                            }
+                            Variable variable = new Variable();
+                            variable.name = objectFields[f].Name;
+                            variable.value = objectFields[f].GetValue(mono[m]);
+                            vd.variables.Add(variable);
+                        }
+                    }
+                    if(vd.variables.Count > 0)
+                    {
+                        data.scripts.Add(vd);
+                    }
+                }
             }
             return data;
         }
@@ -106,7 +178,41 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public void _ApplyData(Data data)
         {
             _timeDelay = Time.realtimeSinceStartup - _time;
-            if (_syncTransform)
+            if(data.scripts != null && mono != null && mono.Length > 0)
+            {
+                int o = 0;
+                for (int m = 0; m < mono.Length; m++)
+                {
+                    if (mono[m] == null || mono[m] == this) { continue; }
+                    for (int i = o; i < data.scripts.Count; i++)
+                    {
+                        if (mono[m].name == data.scripts[i].name)
+                        {
+                            ScriptData taragetData = data.scripts[i];
+                            for (int k = i; k > o; k--)
+                            {
+                                data.scripts[k] = data.scripts[k - 1];
+                            }
+                            data.scripts[o] = taragetData;
+                            o++;
+                            FieldInfo[] objectFields = mono[m].GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                            for (int v = 0; v < taragetData.variables.Count; v++)
+                            {
+                                for (int f = 0; f < objectFields.Length; f++)
+                                {
+                                    if (objectFields[f].Name == taragetData.variables[v].name)
+                                    {
+                                        objectFields[f].SetValue(mono[m], taragetData.variables[v].value);
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            if (_syncTransform && data.transform != null)
             {
                 _targetPosition = data.transform.position;
                 _targetRotation = data.transform.rotation;
@@ -132,6 +238,27 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                 }
             }
+            if(_syncAnimation && data.animation != null && _animator != null) 
+            {
+                for (int i = 0; i < data.animation.parameters.Count; i++)
+                {
+                    switch ((AnimatorControllerParameterType)data.animation.parameters[i].type)
+                    {
+                        case AnimatorControllerParameterType.Float:
+                            _animator.SetFloat(data.animation.parameters[i].name, (float)data.animation.parameters[i].value);
+                            break;
+                        case AnimatorControllerParameterType.Int:
+                            _animator.SetInteger(data.animation.parameters[i].name, (int)data.animation.parameters[i].value);
+                            break;
+                        case AnimatorControllerParameterType.Bool:
+                            _animator.SetBool(data.animation.parameters[i].name, (bool)data.animation.parameters[i].value);
+                            break;
+                        case AnimatorControllerParameterType.Trigger:
+
+                            break;
+                    }
+                }
+            }
             _time = Time.realtimeSinceStartup;
         }
 
@@ -148,6 +275,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             public bool destroy = false;
             public TransformData transform = null;
             public AnimationData animation = null;
+            public List<ScriptData> scripts = null;
         }
 
         public class TransformData
@@ -160,7 +288,26 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public class AnimationData
         {
-            
+            public List<Parameter> parameters = new List<Parameter>();
+        }
+
+        public class Parameter
+        {
+            public string name = string.Empty;
+            public int type = 1;
+            public object value = null;
+        }
+
+        public class ScriptData
+        {
+            public string name = string.Empty;
+            public List<Variable> variables = new List<Variable>();
+        }
+
+        public class Variable
+        {
+            public string name = string.Empty;
+            public object value = null;
         }
 
     }

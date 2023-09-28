@@ -2,6 +2,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
 {
     using System;
     using System.Collections.Generic;
+    using System.Reflection;
+    using System.Xml.Linq;
     using UnityEngine;
     using UnityEngine.SceneManagement;
 
@@ -45,6 +47,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private bool _connected = false; public static bool isConnected { get { return instance._connected; } }
         private bool _inGame = false; public static bool isGameStarted { get { return instance._inGame; } }
         private long _accountID = -1; public static long accountID { get { return instance._accountID; } }
+        private long _sceneHostID = -1; public static bool isSceneHost { get { return instance._sceneHostID >= 0 && instance._sceneHostID == instance._accountID; } }
 
         private string _usernameKey = "username";
         private string _passwordKey = "password";
@@ -179,16 +182,24 @@ namespace DevelopersHub.RealtimeNetworking.Client
             if (_sceneObjects != null && _sceneObjects.Count > 0)
             {
                 List<NetworkObject.Data> syncObjects = new List<NetworkObject.Data>();
+                List<NetworkObject.Data> unownedSyncObjects = new List<NetworkObject.Data>();
                 for (int i = _sceneObjects.Count - 1; i >= 0; i--)
                 {
                     if(_sceneObjects[i] != null && _sceneObjects[i])
                     {
-                        if (_sceneObjects[i].isOwner && _sceneObjects[i].isActiveAndEnabled)
+                        if (_sceneObjects[i].isOwner)
                         {
                             NetworkObject.Data data = _sceneObjects[i].GetData();
                             if(data != null)
                             {
-                                syncObjects.Add(data);
+                                if (_sceneObjects[i].ownerID <= 0 && _sceneHostID >= 0 && _sceneHostID == accountID)
+                                {
+                                    unownedSyncObjects.Add(data);
+                                }
+                                else
+                                {
+                                    syncObjects.Add(data);
+                                }
                             }
                         }
                     }
@@ -203,20 +214,97 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     Packet packet = new Packet();
                     packet.Write((int)InternalID.SYNC_ROOM_PLAYER);
                     packet.Write(sceneIndex);
+                    packet.Write(unownedSyncObjects.Count > 0);
                     packet.Write(data.Length);
                     packet.Write(data);
+                    if (unownedSyncObjects.Count > 0)
+                    {
+                        byte[] data2 = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(unownedSyncObjects));
+                        packet.Write(data2.Length);
+                        packet.Write(data2);
+                    }
                     SendUDPDataInternal(packet);
+                }
+
+                int s = -1;
+                for (int i = 0; i < _globalObjects.Count; i++)
+                {
+                    if (_globalObjects[i].sceneIndex == sceneIndex)
+                    {
+                        s = i;
+                        break;
+                    }
+                }
+                if (s < 0)
+                {
+                    ObjectsData newData = new ObjectsData();
+                    newData.accounts = new List<SceneObjectsData>();
+                    newData.sceneIndex = sceneIndex;
+                    s = _globalObjects.Count;
+                    _globalObjects.Add(newData);
+                }
+                if (syncObjects.Count > 0)
+                {
+                    int a = -1;
+                    for (int i = 0; i < _globalObjects[s].accounts.Count; i++)
+                    {
+                        if (_globalObjects[s].accounts[i].accountID == accountID)
+                        {
+                            a = i;
+                            break;
+                        }
+                    }
+                    if (a < 0)
+                    {
+                        SceneObjectsData newData = new SceneObjectsData();
+                        newData.objects = new List<NetworkObject.Data>();
+                        newData.accountID = accountID;
+                        a = _globalObjects[s].accounts.Count;
+                        _globalObjects[s].accounts.Add(newData);
+                    }
+                    _globalObjects[s].accounts[a].objects = syncObjects;
+                }
+                if (unownedSyncObjects.Count > 0)
+                {
+                    int u = -1;
+                    for (int i = 0; i < _globalObjects[s].accounts.Count; i++)
+                    {
+                        if (_globalObjects[s].accounts[i].accountID <= 0)
+                        {
+                            u = i;
+                            break;
+                        }
+                    }
+                    if (u < 0)
+                    {
+                        SceneObjectsData newData = new SceneObjectsData();
+                        newData.objects = new List<NetworkObject.Data>();
+                        newData.accountID = -1;
+                        u = _globalObjects[s].accounts.Count;
+                        _globalObjects[s].accounts.Add(newData);
+                    }
+                    _globalObjects[s].accounts[u].objects = unownedSyncObjects;
                 }
             }
         }
 
-        private void TickReceived(byte[] data, int scene, long account)
+        private void TickReceived(byte[] data, int scene, long account, long host, bool includeUnowned, byte[] unownedData)
         {
-            if (_disconnected.Contains(account))
+            bool disconnected = _disconnected.Contains(account);
+            if (scene == sceneIndex)
+            {
+                _sceneHostID = host;
+            }
+            if (disconnected)
             {
                 return;
             }
             List<NetworkObject.Data> syncObjects = Tools.Desrialize<List<NetworkObject.Data>>(Tools.Decompress(data));
+            List<NetworkObject.Data> unownedSyncObjects = new List<NetworkObject.Data>();
+            if (includeUnowned)
+            {
+                unownedSyncObjects = Tools.Desrialize<List<NetworkObject.Data>>(Tools.Decompress(unownedData));
+            }
             int s = -1;
             for (int i = 0; i < _globalObjects.Count; i++)
             {
@@ -235,6 +323,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 _globalObjects.Add(newData);
             }
             int a = -1;
+            int u = -1;
             for (int i = 0; i < _globalObjects[s].accounts.Count; i++)
             {
                 if (_globalObjects[s].accounts[i].accountID == account)
@@ -251,12 +340,30 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 a = _globalObjects[s].accounts.Count;
                 _globalObjects[s].accounts.Add(newData);
             }
+            if (includeUnowned)
+            {
+                for (int i = 0; i < _globalObjects[s].accounts.Count; i++)
+                {
+                    if (_globalObjects[s].accounts[i].accountID <= 0)
+                    {
+                        u = i;
+                        break;
+                    }
+                }
+                if (u < 0)
+                {
+                    SceneObjectsData newData = new SceneObjectsData();
+                    newData.objects = new List<NetworkObject.Data>();
+                    newData.accountID = -1;
+                    u = _globalObjects[s].accounts.Count;
+                    _globalObjects[s].accounts.Add(newData);
+                }
+            }
             if (scene == sceneIndex)
             {
                 int o = 0;
                 for (int i = 0; i < _sceneObjects.Count; i++)
                 {
-                    bool found = false;
                     for (int j = o; j < syncObjects.Count; j++)
                     {
                         if (syncObjects[j].id == _sceneObjects[i].id)
@@ -268,25 +375,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
                                 syncObjects[k] = syncObjects[k - 1];
                             }
                             syncObjects[o] = taragetData;
-                            // syncObjects.RemoveAt(j);
-                            // syncObjects.Insert(o, taragetData);
 
                             o++;
-                            found = true;
                             _sceneObjects[i]._ApplyData(taragetData);
                             break;
                         }
                     }
-                    if(!found && _sceneObjects[i].ownerID == account)
-                    {
-                        // Delete the object without data
-                        Destroy(_sceneObjects[i].gameObject);
-                    }
-                }
-                for (int i = _sceneObjects.Count - 1; i >= 0; i--)
-                {
-                    if (_sceneObjects[i] != null) { continue; }
-                    _sceneObjects.RemoveAt(i);
                 }
                 if (o < syncObjects.Count)
                 {
@@ -310,12 +404,49 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         }
                     }
                 }
+
+                // Unowned
+                if (includeUnowned)
+                {
+                    o = 0;
+                    for (int i = 0; i < _sceneObjects.Count; i++)
+                    {
+                        for (int j = o; j < unownedSyncObjects.Count; j++)
+                        {
+                            if (unownedSyncObjects[j].id == _sceneObjects[i].id)
+                            {
+                                NetworkObject.Data taragetData = unownedSyncObjects[j];
+
+                                for (int k = j; k > o; k--)
+                                {
+                                    unownedSyncObjects[k] = unownedSyncObjects[k - 1];
+                                }
+                                unownedSyncObjects[o] = taragetData;
+
+                                o++;
+                                _sceneObjects[i]._ApplyData(taragetData);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                for (int i = _sceneObjects.Count - 1; i >= 0; i--)
+                {
+                    if (_sceneObjects[i] != null) { continue; }
+                    _sceneObjects.RemoveAt(i);
+                }
             }
             _globalObjects[s].accounts[a].objects = syncObjects;
+            if (includeUnowned)
+            {
+                _globalObjects[s].accounts[u].objects = unownedSyncObjects;
+            }
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            _sceneHostID = -1;
             _scene = scene;
             _sceneObjects.Clear();
             NetworkObject[] obj = FindObjectsOfType<NetworkObject>(true);
@@ -510,9 +641,14 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         _inGame = true;
                         _ticksTimer = 0;
                         _ticksCalled = 0;
-                        _gameRoom = upRoom;
                         _disconnected.Clear();
                     }
+
+                    if (_gameRoom != null && _gameRoom.hostID == upRoom.hostID)
+                    {
+                        // OnHostChanged
+                    }
+                    _gameRoom = upRoom;
 
                     if (OnRoomUpdated != null)
                     {
@@ -547,10 +683,34 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 case InternalID.SYNC_ROOM_PLAYER:
                     int syScene = packet.ReadInt();
                     long syAccount = packet.ReadLong();
+                    long syHost = packet.ReadLong();
+                    bool syUnowned = packet.ReadBool();
                     int syDataLen = packet.ReadInt();
                     byte[] syData = packet.ReadBytes(syDataLen);
+                    byte[] syData2 = null;
+                    if (syUnowned)
+                    {
+                        syDataLen = packet.ReadInt();
+                        syData2 = packet.ReadBytes(syDataLen);
+                    }
                     packet.Dispose();
-                    TickReceived(syData, syScene, syAccount);
+                    TickReceived(syData, syScene, syAccount, syHost, syUnowned, syData2);
+                    break;
+                case InternalID.SET_HOST:
+                    int stScene = packet.ReadInt();
+                    long stHost = packet.ReadLong();
+                    packet.Dispose();
+                    if(sceneIndex == stScene)
+                    {
+                        _sceneHostID = stHost;
+                    }
+                    break;
+                case InternalID.DESTROY_OBJECT:
+                    int dsScene = packet.ReadInt();
+                    long dsAccount = packet.ReadLong();
+                    string dsId = packet.ReadString();
+                    packet.Dispose();
+                    _DestroyObject(dsScene, dsId, dsAccount);
                     break;
             }
         }
@@ -884,7 +1044,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private enum InternalID
         {
-            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11
+            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11, SET_HOST = 12, DESTROY_OBJECT = 13
         }
 
         public enum AuthenticationResponse
@@ -935,6 +1095,110 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public enum StartRoomResponse
         {
             UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6
+        }
+
+        private void _DestroyObject(int scene, string id, long account)
+        {
+            if(sceneIndex == scene)
+            {
+                for (int i = 0; i < _sceneObjects.Count; i++)
+                {
+                    if (_sceneObjects[i].id == id)
+                    {
+                        if(_sceneObjects[i].ownerID < 0 || account == _sceneObjects[i].ownerID)
+                        {
+                            Destroy(_sceneObjects[i].gameObject);
+                            _sceneObjects.RemoveAt(i);
+                        }
+                        break;
+                    }
+                }
+            }
+            for (int i = 0; i < _globalObjects.Count; i++)
+            {
+                if (_globalObjects[i].sceneIndex == scene)
+                {
+                    bool found = false;
+                    int u = -1;
+                    int a = -1;
+                    for (int j = 0; j < _globalObjects[i].accounts.Count; j++)
+                    {
+                        if (found)
+                        {
+                            break;
+                        }
+                        if (_globalObjects[i].accounts[j].accountID == account)
+                        {
+                            a = j;
+                            for (int k = 0; k < _globalObjects[i].accounts[j].objects.Count; k++)
+                            {
+                                if (_globalObjects[i].accounts[j].objects[k].id == id)
+                                {
+                                    _globalObjects[i].accounts[j].objects.RemoveAt(k);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if(u >= 0)
+                            {
+                                break;
+                            }
+                        }
+                        else if (_globalObjects[i].accounts[j].accountID < 0)
+                        {
+                            u = j;
+                            if (a >= 0)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    if(!found && u >= 0)
+                    {
+                        for (int k = 0; k < _globalObjects[i].accounts[u].objects.Count; k++)
+                        {
+                            if (_globalObjects[i].accounts[u].objects[k].id == id)
+                            {
+                                _globalObjects[i].accounts[u].objects.RemoveAt(k);
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        public void _DestroyObject(NetworkObject target)
+        {
+            if (target == null)
+            {
+
+            }
+            else if (!instance._connected)
+            {
+
+            }
+            else if (!instance._authenticated)
+            {
+
+            }
+            else if (isGameStarted && target.isOwner)
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.DESTROY_OBJECT);
+                packet.Write(sceneIndex);
+                packet.Write(target.id);
+                SendTCPDataInternal(packet);
+                if (!target.isDestroying)
+                {
+                    Destroy(target.gameObject);
+                }
+            }
+            else
+            {
+
+            }
         }
 
     }

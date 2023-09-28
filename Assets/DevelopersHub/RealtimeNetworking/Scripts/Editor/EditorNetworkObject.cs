@@ -10,10 +10,14 @@ namespace DevelopersHub.RealtimeNetworking.Client
     {
 
         private SerializedProperty id = null;
+        //private SerializedProperty syncTransform = null;
+        //private SerializedProperty syncAnimation = null;
 
         private void OnEnable()
         {
             id = serializedObject.FindProperty("_id");
+            //syncTransform = serializedObject.FindProperty("_syncTransform");
+            //syncAnimation = serializedObject.FindProperty("_syncAnimation");
         }
 
         public override void OnInspectorGUI()
@@ -38,6 +42,17 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         }
                     }
                 }
+                /*
+                Animator animator = networkObject.GetComponent<Animator>();
+                if (animator == null)
+                {
+                    if (syncAnimation.boolValue)
+                    {
+                        syncAnimation.boolValue = false;
+                        serializedObject.ApplyModifiedProperties();
+                    }
+                }
+                */
             }
             base.OnInspectorGUI();
         }
