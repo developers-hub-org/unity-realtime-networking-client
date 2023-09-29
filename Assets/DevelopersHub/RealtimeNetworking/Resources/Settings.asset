@@ -16,3 +16,4 @@ MonoBehaviour:
   _port: 5555
   prefabs:
   - {fileID: 8179720575216243064, guid: 67b9a9aa070ff444dbbd3328dd82fa5d, type: 3}
+  - {fileID: 1982748803318845165, guid: 734e67b01e83e194697f52aa25b28e34, type: 3}

@@ -1,9 +1,9 @@
 namespace DevelopersHub.RealtimeNetworking.Client
 {
     using System;
+    using System.Collections;
     using System.Collections.Generic;
-    using System.Reflection;
-    using System.Xml.Linq;
+    using System.Security.Cryptography;
     using UnityEngine;
     using UnityEngine.SceneManagement;
 
@@ -55,6 +55,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private Scene _scene = default; public static int sceneIndex { get { return instance._scene.buildIndex; } }
         private List<NetworkObject> _sceneObjects = new List<NetworkObject>();
         private List<ObjectsData> _globalObjects = new List<ObjectsData>();
+        private List<NetworkObject> _instantiatedObjects = new List<NetworkObject>();
         private HashSet<long> _disconnected = new HashSet<long>();
         private Data.Room _gameRoom = null;
         private int _ticksPerSecond = 10;
@@ -187,7 +188,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 {
                     if(_sceneObjects[i] != null && _sceneObjects[i])
                     {
-                        if (_sceneObjects[i].isOwner)
+                        if (_sceneObjects[i].isOwner && !_sceneObjects[i].isDestroying)
                         {
                             NetworkObject.Data data = _sceneObjects[i].GetData();
                             if(data != null)
@@ -208,7 +209,35 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         _sceneObjects.RemoveAt(i);
                     }
                 }
-                if (syncObjects.Count > 0)
+                bool useTcp = false;
+                if(_instantiatedObjects.Count > 0)
+                {
+                    int o = unownedSyncObjects.Count;
+                    for (int i = _instantiatedObjects.Count - 1; i >= 0; i--)
+                    {
+                        bool found = false;
+                        for (int j = 0; j < o; j++)
+                        {
+                            if (unownedSyncObjects[j].id == _instantiatedObjects[i].id)
+                            {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found)
+                        {
+                            NetworkObject.Data data = _instantiatedObjects[i].GetData();
+                            if (data != null)
+                            {
+                                useTcp = true;
+                                unownedSyncObjects.Add(data);
+                            }
+                        }
+                        _instantiatedObjects.RemoveAt(i);
+                    }
+                }
+
+                if (syncObjects.Count > 0 || unownedSyncObjects.Count > 0)
                 {
                     byte[] data = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(syncObjects));
                     Packet packet = new Packet();
@@ -223,7 +252,14 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         packet.Write(data2.Length);
                         packet.Write(data2);
                     }
-                    SendUDPDataInternal(packet);
+                    if (useTcp)
+                    {
+                        SendTCPDataInternal(packet);
+                    }
+                    else
+                    {
+                        SendUDPDataInternal(packet);
+                    }
                 }
 
                 int s = -1;
@@ -264,7 +300,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                     _globalObjects[s].accounts[a].objects = syncObjects;
                 }
-                if (unownedSyncObjects.Count > 0)
+                if (unownedSyncObjects.Count > 0 && isSceneHost)
                 {
                     int u = -1;
                     for (int i = 0; i < _globalObjects[s].accounts.Count; i++)
@@ -364,21 +400,30 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 int o = 0;
                 for (int i = 0; i < _sceneObjects.Count; i++)
                 {
-                    for (int j = o; j < syncObjects.Count; j++)
+                    if (_sceneObjects[i] != null)
                     {
-                        if (syncObjects[j].id == _sceneObjects[i].id)
+                        bool found = false;
+                        for (int j = o; j < syncObjects.Count; j++)
                         {
-                            NetworkObject.Data taragetData = syncObjects[j];
-
-                            for (int k = j; k > o; k--)
+                            if (syncObjects[j].id == _sceneObjects[i].id)
                             {
-                                syncObjects[k] = syncObjects[k - 1];
-                            }
-                            syncObjects[o] = taragetData;
+                                NetworkObject.Data taragetData = syncObjects[j];
 
-                            o++;
-                            _sceneObjects[i]._ApplyData(taragetData);
-                            break;
+                                for (int k = j; k > o; k--)
+                                {
+                                    syncObjects[k] = syncObjects[k - 1];
+                                }
+                                syncObjects[o] = taragetData;
+
+                                o++;
+                                _sceneObjects[i]._ApplyData(taragetData);
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found && _sceneObjects[i].ownerID >= 0)
+                        {
+                            _sceneObjects[i]._SetWithoutData();
                         }
                     }
                 }
@@ -392,13 +437,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
                             NetworkObject networkObject = Instantiate(Client.instance.settings.prefabs[syncObjects[i].prefab], syncObjects[i].transform.position, syncObjects[i].transform.rotation);
                             networkObject.id = syncObjects[i].id;
                             networkObject.prefabIndex = syncObjects[i].prefab;
-                            networkObject.transform.localScale = syncObjects[i].transform.scale;
                             networkObject._Initialize(account, syncObjects[i].destroy);
-                            Rigidbody rb = networkObject.GetComponent<Rigidbody>();
-                            if(rb != null)
-                            {
-                                rb.velocity = syncObjects[i].transform.velocity;
-                            }
+                            networkObject._ApplyData(syncObjects[i]);
                             // Keep track of networkObject in a list and instantiate it after leaving and coming back to scene
                             _sceneObjects.Add(networkObject);
                         }
@@ -411,21 +451,47 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     o = 0;
                     for (int i = 0; i < _sceneObjects.Count; i++)
                     {
-                        for (int j = o; j < unownedSyncObjects.Count; j++)
+                        if (_sceneObjects[i] != null)
                         {
-                            if (unownedSyncObjects[j].id == _sceneObjects[i].id)
+                            bool found = false;
+                            for (int j = o; j < unownedSyncObjects.Count; j++)
                             {
-                                NetworkObject.Data taragetData = unownedSyncObjects[j];
-
-                                for (int k = j; k > o; k--)
+                                if (unownedSyncObjects[j].id == _sceneObjects[i].id)
                                 {
-                                    unownedSyncObjects[k] = unownedSyncObjects[k - 1];
-                                }
-                                unownedSyncObjects[o] = taragetData;
+                                    NetworkObject.Data taragetData = unownedSyncObjects[j];
 
-                                o++;
-                                _sceneObjects[i]._ApplyData(taragetData);
-                                break;
+                                    for (int k = j; k > o; k--)
+                                    {
+                                        unownedSyncObjects[k] = unownedSyncObjects[k - 1];
+                                    }
+                                    unownedSyncObjects[o] = taragetData;
+
+                                    o++;
+                                    _sceneObjects[i]._ApplyData(taragetData);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found && _sceneObjects[i].ownerID < 0)
+                            {
+                                _sceneObjects[i]._SetWithoutData();
+                            }
+                        }
+                    }
+                    if (o < unownedSyncObjects.Count)
+                    {
+                        for (int i = o; i < unownedSyncObjects.Count; i++)
+                        {
+                            // Instantiate the data without object
+                            if (unownedSyncObjects[i].prefab >= 0 && unownedSyncObjects[i].prefab < Client.instance.settings.prefabs.Length && Client.instance.settings.prefabs[unownedSyncObjects[i].prefab] != null)
+                            {
+                                NetworkObject networkObject = Instantiate(Client.instance.settings.prefabs[unownedSyncObjects[i].prefab], unownedSyncObjects[i].transform.position, unownedSyncObjects[i].transform.rotation);
+                                networkObject.id = unownedSyncObjects[i].id;
+                                networkObject.prefabIndex = unownedSyncObjects[i].prefab;
+                                networkObject._Initialize(-1, unownedSyncObjects[i].destroy);
+                                networkObject._ApplyData(unownedSyncObjects[i]);
+                                // Keep track of networkObject in a list and instantiate it after leaving and coming back to scene
+                                _sceneObjects.Add(networkObject);
                             }
                         }
                     }
@@ -709,8 +775,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     int dsScene = packet.ReadInt();
                     long dsAccount = packet.ReadLong();
                     string dsId = packet.ReadString();
+                    System.Numerics.Vector3 dsPos = packet.ReadVector3();
                     packet.Dispose();
-                    _DestroyObject(dsScene, dsId, dsAccount);
+                    _DestroyObject(dsScene, dsId, dsAccount, new Vector3(dsPos.X, dsPos.Y, dsPos.Z));
                     break;
             }
         }
@@ -1022,9 +1089,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static NetworkObject Instantiate(int prefabIndex, Vector3 position, Quaternion rotation, bool own = true, bool destroyOnLeave = false)
+        public static NetworkObject InstantiatePrefab(int index, Vector3 position, Quaternion rotation, bool own = true, bool destroyOnLeave = false)
         {
-            return instance._Instantiate(prefabIndex, position, rotation, own, destroyOnLeave);
+            return instance._Instantiate(index, position, rotation, own, destroyOnLeave);
         }
 
         private NetworkObject _Instantiate(int prefabIndex, Vector3 position, Quaternion rotation, bool own, bool destroyOnLeave)
@@ -1036,10 +1103,22 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 _object.id = Guid.NewGuid().ToString();
                 _object.prefabIndex = prefabIndex;
                 _object._Initialize(own ? accountID : -1, destroyOnLeave);
-                _sceneObjects.Add(_object);
-                // Keep track of _object in a list and instantiate it after leaving and coming back to scene
+                _object.Initialize();
+                StartCoroutine(_Instantiate(_object, own));
             }
             return _object;
+        }
+
+        private IEnumerator _Instantiate(NetworkObject _object, bool own)
+        {
+            yield return new WaitForEndOfFrame();
+            _sceneObjects.Add(_object);
+            if (!own && !isSceneHost)
+            {
+                _instantiatedObjects.Add(_object);
+            }
+            // Keep track of _object in a list and instantiate it after leaving and coming back to scene
+            _ticksCalled--;
         }
 
         private enum InternalID
@@ -1097,20 +1176,26 @@ namespace DevelopersHub.RealtimeNetworking.Client
             UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6
         }
 
-        private void _DestroyObject(int scene, string id, long account)
+        private void _DestroyObject(int scene, string id, long account, Vector3 position)
         {
-            if(sceneIndex == scene)
+            if (sceneIndex == scene)
             {
-                for (int i = 0; i < _sceneObjects.Count; i++)
+                for (int i = _sceneObjects.Count - 1; i >= 0; i--)
                 {
-                    if (_sceneObjects[i].id == id)
+                    if (_sceneObjects[i] != null)
                     {
-                        if(_sceneObjects[i].ownerID < 0 || account == _sceneObjects[i].ownerID)
+                        if (_sceneObjects[i].id == id)
                         {
-                            Destroy(_sceneObjects[i].gameObject);
-                            _sceneObjects.RemoveAt(i);
+                            if (_sceneObjects[i].ownerID < 0 || account == _sceneObjects[i].ownerID)
+                            {
+                                _sceneObjects[i]._Destroy(position);
+                            }
+                            break;
                         }
-                        break;
+                    }
+                    else
+                    {
+                        _sceneObjects.RemoveAt(i);
                     }
                 }
             }
@@ -1185,14 +1270,25 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
             else if (isGameStarted && target.isOwner)
             {
+                for (int i = _sceneObjects.Count - 1; i >= 0; i--)
+                {
+                    if (_sceneObjects[i] != null && _sceneObjects[i].id == target.id)
+                    {
+                        _sceneObjects.RemoveAt(i);
+                        break;
+                    }
+                }
                 Packet packet = new Packet();
                 packet.Write((int)InternalID.DESTROY_OBJECT);
                 packet.Write(sceneIndex);
                 packet.Write(target.id);
+                packet.Write(target.transform.position);
                 SendTCPDataInternal(packet);
                 if (!target.isDestroying)
                 {
+                    target._SetDestroy();
                     Destroy(target.gameObject);
+
                 }
             }
             else

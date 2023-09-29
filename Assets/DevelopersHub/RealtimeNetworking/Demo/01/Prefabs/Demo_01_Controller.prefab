@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &2459602756433764517
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4155419158917173516}
+  m_Layer: 0
+  m_Name: Muzzle
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4155419158917173516
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2459602756433764517}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.598, z: 0.852}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 8179720575216243065}
+  m_RootOrder: 2
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5828994366077805659
 GameObject:
   m_ObjectHideFlags: 0
@@ -42,7 +73,6 @@ GameObject:
   - component: {fileID: 8179720574895074999}
   - component: {fileID: 8179720574895074994}
   - component: {fileID: 8179720574895074993}
-  - component: {fileID: 8179720574895074992}
   m_Layer: 0
   m_Name: Cube
   m_TagString: Untagged
@@ -115,19 +145,6 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!65 &8179720574895074992
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8179720574895074998}
-  m_Material: {fileID: 0}
-  m_IsTrigger: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &8179720575216243010
 GameObject:
   m_ObjectHideFlags: 0
@@ -164,6 +181,7 @@ Transform:
   m_Children:
   - {fileID: 8179720574895074999}
   - {fileID: 3603481029532052768}
+  - {fileID: 4155419158917173516}
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -181,6 +199,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _id: 6c0361cb-ae80-49f0-a78b-b11261301990
   _syncTransform: 1
+  _uncontrolledRigidbody: 0
   _syncAnimation: 0
 --- !u!114 &8179720575216243071
 MonoBehaviour:
@@ -195,9 +214,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   health: 100
+  _damage: 15
+  _fireRate: 0.5
   _moveSpeed: 6
   _healthPrefab: {fileID: 1701181533039168581, guid: c51e935e45c3dc548aca14bc4efdf83b, type: 3}
   _head: {fileID: 3603481029532052768}
+  _bulletPrefabIndex: 1
+  _gunMuzzle: {fileID: 4155419158917173516}
 --- !u!33 &8179720575216243070
 MeshFilter:
   m_ObjectHideFlags: 0

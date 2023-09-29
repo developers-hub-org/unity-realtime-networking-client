@@ -9,35 +9,56 @@ namespace DevelopersHub.RealtimeNetworking.Client
     {
 
         [Space] [ReadOnly] [SerializeField] private string _id = ""; public string id { get { return _id; } set { _id = value; } }
-        private bool _destroyOnLeave = false; public bool destroyOnLeave { get { return _destroyOnLeave; } }
+
         [SerializeField] private bool _syncTransform = true;
+        [SerializeField] private bool _uncontrolledRigidbody = false;
         private float _positionLerpTime = 0.05f;
         private float _rotationLerpTime = 0.05f;
-        [Tooltip("Sync animation is srill experimental and only syncs the animator parameters except trigger.")]
+
+        [Tooltip("Sync animation is srill experimental and only syncs the animator parameters except triggers.")]
         [SerializeField] private bool _syncAnimation = true;
 
-        private long _ownerID = -1; public bool isOwner { get { return (_ownerID >= 0 && _ownerID == RealtimeNetworking.accountID) || (_ownerID < 0 && RealtimeNetworking.isSceneHost); } }
-        public long ownerID { get { return _ownerID; } }
-
         private Vector3 _origionPosition = Vector3.zero;
+        // private Vector3 _predictedPosition = Vector3.zero;
         private Quaternion _origionRotation = Quaternion.identity;
         private Vector3 _origionScale = Vector3.one;
         private Vector3 _targetPosition = Vector3.zero;
         private Quaternion _targetRotation = Quaternion.identity;
         private Vector3 _targetScale = Vector3.one;
+        // private TransformData _transform = null;
         private Rigidbody _rigidbody = null;
         private Animator _animator = null;
         private float _time = 0;
         private float _timeDelay = 0;
         private Vector3 _moveVelocity = Vector3.one;
         private float _rotateVelocity = 0;
+        private bool _destroyOnLeave = false; public bool destroyOnLeave { get { return _destroyOnLeave; } }
         private int _prefabIndex = -1; public int prefabIndex { get { return _prefabIndex; } set { _prefabIndex = value; } }
         private bool _destroying = false; public bool isDestroying { get { return _destroying; } }
+        private long _ownerID = -1; public bool isOwner { get { return (_ownerID >= 0 && _ownerID == RealtimeNetworking.accountID) || (_ownerID < 0 && RealtimeNetworking.isSceneHost); } }
+        public long ownerID { get { return _ownerID; } }
+        private bool _withoutData = false;
+        private bool _queueDestroy = false;
+        private Vector3 _preDestroyOrigion = Vector3.one;
+        private Vector3 _preDestroyTarget = Vector3.one;
+        private float _destroyTime = 0.5f;
+        private float _destroyTimer = 0;
+        private bool _collided = false;
+        private MonoBehaviour[] mono = null;
+        private bool _initialized = false;
 
-        MonoBehaviour[] mono = null;
-
-        private void Start()
+        private void Awake()
         {
+            Initialize();
+        }
+
+        public void Initialize()
+        {
+            if (_initialized)
+            {
+                return;
+            }
+            _initialized = true;
             _origionPosition = transform.position;
             _origionRotation = transform.rotation;
             _origionScale = transform.localScale;
@@ -54,6 +75,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 _syncAnimation = false;
             }
+            if(_rigidbody == null)
+            {
+                _uncontrolledRigidbody = false;
+            }
             mono = GetComponents<MonoBehaviour>();
         }
 
@@ -61,16 +86,33 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             if (_syncTransform && RealtimeNetworking.isGameStarted && !isOwner)
             {
-                Vector3 position = _targetPosition;
-                Quaternion rotation = _targetRotation;
-                float distance = Vector3.Distance(transform.position, position);
-                float angle = Quaternion.Angle(transform.rotation, rotation);
-                if (transform.position != position)
+                if(_destroying && _queueDestroy)
                 {
-                    position = Vector3.SmoothDamp(transform.position, position, ref _moveVelocity, _positionLerpTime);
+                    _destroyTimer += Time.deltaTime;
+                    float t = _destroyTimer / _destroyTime;
+                    if (t > 1f) { t = 1f; }
+                    transform.position = Vector3.Lerp(_preDestroyOrigion, _preDestroyTarget, t);
+                    if (transform.position == _preDestroyTarget && _withoutData)
+                    {
+                        Destroy(gameObject);
+                    }
                 }
-                if (transform.rotation != rotation)
+                else
                 {
+                    if (!_uncontrolledRigidbody)
+                    {
+                        Vector3 position = _targetPosition;
+                        if (transform.position != position)
+                        {
+                            position = Vector3.SmoothDamp(transform.position, position, ref _moveVelocity, _positionLerpTime);
+                        }
+                        transform.position = position;
+                    }
+                }
+
+                if (transform.rotation != _targetRotation)
+                {
+                    Quaternion rotation = _targetRotation;
                     float delta = Quaternion.Angle(transform.rotation, rotation);
                     if (delta > 0f)
                     {
@@ -78,9 +120,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         t = 1.0f - (t / delta);
                         rotation = Quaternion.Slerp(transform.rotation, rotation, t);
                     }
+                    transform.rotation = rotation;
                 }
-                transform.position = position;
-                transform.rotation = rotation;
+
                 if (transform.localScale != _targetScale)
                 {
                     transform.localScale = _targetScale;
@@ -90,6 +132,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private void OnDestroy()
         {
+            if (_destroying || !isOwner)
+            {
+                return;
+            }
             _destroying = true;
             RealtimeNetworking.instance._DestroyObject(this);
         }
@@ -112,7 +158,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 data.transform.scale = transform.localScale;
                 if(_rigidbody != null)
                 {
+                    // data.transform.rigidbody = new RigidbodyData();
                     data.transform.velocity = _rigidbody.velocity;
+                    // data.transform.rigidbody.drag = _rigidbody.drag;
+                    // data.transform.rigidbody.angularDrag = _rigidbody.angularDrag;
+                    // data.transform.rigidbody.angularVelocity = _rigidbody.angularVelocity;
                 }
             }
             if (_syncAnimation && _animator != null)
@@ -177,8 +227,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public void _ApplyData(Data data)
         {
+            _withoutData = false;
             _timeDelay = Time.realtimeSinceStartup - _time;
-            if(data.scripts != null && mono != null && mono.Length > 0)
+
+            #region Variables
+            if (data.scripts != null && mono != null && mono.Length > 0)
             {
                 int o = 0;
                 for (int m = 0; m < mono.Length; m++)
@@ -212,6 +265,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                 }
             }
+            #endregion
+
+            #region Transform
             if (_syncTransform && data.transform != null)
             {
                 _targetPosition = data.transform.position;
@@ -226,19 +282,47 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     {
                         _rigidbody.velocity = data.transform.velocity;
                         _moveVelocity = data.transform.velocity;
+                        // _rigidbody.angularVelocity = data.transform.rigidbody.angularVelocity;
+                        // _rigidbody.drag = data.transform.rigidbody.drag;
+                        // _rigidbody.angularDrag = data.transform.rigidbody.angularDrag;
+                        // _predictedPosition = data.transform.position;
                     }
                 }
                 else
                 {
                     if (_rigidbody != null)
                     {
-                        _rigidbody.velocity = data.transform.velocity;
-                        _moveVelocity = data.transform.velocity;
-                        _targetPosition = _targetPosition + data.transform.velocity * (_timeDelay);
+                        if (!_uncontrolledRigidbody)
+                        {
+                            _rigidbody.velocity = data.transform.velocity;
+                            _moveVelocity = data.transform.velocity;
+                        }
+                        /*
+                        if (_predictPosition)
+                        {
+                            float drag = Mathf.Clamp01(1.0f - (_transform.rigidbody.drag * _timeDelay));
+                            _predictedPosition = _transform.position + ((_transform.rigidbody.velocity + (_rigidbody.useGravity ? Physics.gravity * _timeDelay : Vector3.zero)) * drag * _timeDelay);
+                            if (!_collided)
+                            {
+                                transform.position = _predictedPosition;
+                            }
+                        }
+                        */
+                        if (_collided)
+                        {
+                            // _rigidbody.velocity = data.transform.rigidbody.velocity;
+                            // _rigidbody.angularVelocity = data.transform.rigidbody.angularVelocity;
+                            // _rigidbody.drag = data.transform.rigidbody.drag;
+                            // _rigidbody.angularDrag = data.transform.rigidbody.angularDrag;
+                            _collided = false;
+                        }
                     }
                 }
             }
-            if(_syncAnimation && data.animation != null && _animator != null) 
+            #endregion
+
+            #region Animation
+            if (_syncAnimation && data.animation != null && _animator != null) 
             {
                 for (int i = 0; i < data.animation.parameters.Count; i++)
                 {
@@ -259,13 +343,44 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                 }
             }
+            #endregion
+
             _time = Time.realtimeSinceStartup;
+        }
+
+        private void OnCollisionEnter()
+        {
+            _collided = true;
         }
 
         public void _Initialize(long owner, bool destroyOnLeave = true)
         {
+            Initialize();
             _destroyOnLeave = destroyOnLeave;
             _ownerID = owner; 
+        }
+
+        public void _SetDestroy()
+        {
+            _destroying = true;
+        }
+
+        public void _SetWithoutData()
+        {
+            _withoutData = true;
+        }
+
+        public void _Destroy(Vector3 position)
+        {
+            if (_destroying)
+            {
+                return;
+            }
+            _destroying = true;
+            _destroyTimer = 0;
+            _preDestroyOrigion = transform.position;
+            _preDestroyTarget = position;
+            _queueDestroy = true;
         }
 
         public class Data
