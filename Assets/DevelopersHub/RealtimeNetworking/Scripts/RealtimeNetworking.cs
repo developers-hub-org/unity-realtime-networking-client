@@ -3,9 +3,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System;
     using System.Collections;
     using System.Collections.Generic;
-    using System.Security.Cryptography;
     using UnityEngine;
     using UnityEngine.SceneManagement;
+    using static DevelopersHub.RealtimeNetworking.Client.Packet;
+    using static UnityEngine.GraphicsBuffer;
 
     public class RealtimeNetworking : MonoBehaviour
     {
@@ -57,6 +58,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private List<ObjectsData> _globalObjects = new List<ObjectsData>();
         private List<NetworkObject> _instantiatedObjects = new List<NetworkObject>();
         private HashSet<long> _disconnected = new HashSet<long>();
+        private int _maxDestroydTrack = 10;
+        private List<string> _destroyed = new List<string>();
         private Data.Room _gameRoom = null;
         private int _ticksPerSecond = 10;
         private int _ticksCalled = 0;
@@ -182,8 +185,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             if (_sceneObjects != null && _sceneObjects.Count > 0)
             {
+                bool useTcp = false;
                 List<NetworkObject.Data> syncObjects = new List<NetworkObject.Data>();
                 List<NetworkObject.Data> unownedSyncObjects = new List<NetworkObject.Data>();
+                List<NetworkObject.ShortData> scriptsData = new List<NetworkObject.ShortData>();
                 for (int i = _sceneObjects.Count - 1; i >= 0; i--)
                 {
                     if(_sceneObjects[i] != null && _sceneObjects[i])
@@ -191,7 +196,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         if (_sceneObjects[i].isOwner && !_sceneObjects[i].isDestroying)
                         {
                             NetworkObject.Data data = _sceneObjects[i].GetData();
-                            if(data != null)
+                            if (data != null)
                             {
                                 if (_sceneObjects[i].ownerID <= 0 && _sceneHostID >= 0 && _sceneHostID == accountID)
                                 {
@@ -203,13 +208,23 @@ namespace DevelopersHub.RealtimeNetworking.Client
                                 }
                             }
                         }
+                        else if (!_sceneObjects[i].isOwner && !_sceneObjects[i].isDestroying && isSceneHost)
+                        {
+                            NetworkObject.ScriptData[] scripts = _sceneObjects[i].GetVariables(SyncVariable.WhoCanChange.Host);
+                            if(scripts != null && scripts.Length > 0)
+                            {
+                                NetworkObject.ShortData shortData = new NetworkObject.ShortData();
+                                shortData.id = _sceneObjects[i].id;
+                                shortData.scripts = scripts;
+                                scriptsData.Add(shortData);
+                            }
+                        }
                     }
                     else
                     {
                         _sceneObjects.RemoveAt(i);
                     }
                 }
-                bool useTcp = false;
                 if(_instantiatedObjects.Count > 0)
                 {
                     int o = unownedSyncObjects.Count;
@@ -237,20 +252,38 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                 }
 
-                if (syncObjects.Count > 0 || unownedSyncObjects.Count > 0)
+                if (syncObjects.Count > 0 || unownedSyncObjects.Count > 0 || scriptsData.Count > 0)
                 {
-                    byte[] data = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(syncObjects));
+                    byte[] data1 = null, data2 = null, data3 = null;
+                    if (syncObjects.Count > 0)
+                    {
+                        data1 = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(syncObjects));
+                    }
+                    if (scriptsData.Count > 0)
+                    {
+                        data2 = Tools.Compress(Tools.Serialize<List<NetworkObject.ShortData>>(scriptsData));
+                    }
+                    if (unownedSyncObjects.Count > 0)
+                    {
+                        data3 = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(unownedSyncObjects));
+                    }
                     Packet packet = new Packet();
                     packet.Write((int)InternalID.SYNC_ROOM_PLAYER);
                     packet.Write(sceneIndex);
-                    packet.Write(unownedSyncObjects.Count > 0);
-                    packet.Write(data.Length);
-                    packet.Write(data);
-                    if (unownedSyncObjects.Count > 0)
+                    packet.Write(data1 == null ? 0 : data1.Length);
+                    packet.Write(data2 == null ? 0 : data2.Length);
+                    packet.Write(data3 == null ? 0 : data3.Length);
+                    if (data1 != null)
                     {
-                        byte[] data2 = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(unownedSyncObjects));
-                        packet.Write(data2.Length);
+                        packet.Write(data1);
+                    }
+                    if (data2 != null)
+                    {
                         packet.Write(data2);
+                    }
+                    if (data3 != null)
+                    {
+                        packet.Write(data3);
                     }
                     if (useTcp)
                     {
@@ -324,7 +357,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        private void TickReceived(byte[] data, int scene, long account, long host, bool includeUnowned, byte[] unownedData)
+        private void TickReceived(int scene, long account, long host, byte[] data, byte[] scriptsData, byte[] unownedData)
         {
             bool disconnected = _disconnected.Contains(account);
             if (scene == sceneIndex)
@@ -335,12 +368,25 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 return;
             }
-            List<NetworkObject.Data> syncObjects = Tools.Desrialize<List<NetworkObject.Data>>(Tools.Decompress(data));
+
+            List<NetworkObject.Data> syncObjects = new List<NetworkObject.Data>();
+            if(data != null)
+            {
+                syncObjects = Tools.Desrialize<List<NetworkObject.Data>>(Tools.Decompress(data));
+            }
+
+            List<NetworkObject.ShortData> scripts = new List<NetworkObject.ShortData>();
+            if (scriptsData != null)
+            {
+                scripts = Tools.Desrialize<List<NetworkObject.ShortData>>(Tools.Decompress(scriptsData));
+            }
+
             List<NetworkObject.Data> unownedSyncObjects = new List<NetworkObject.Data>();
-            if (includeUnowned)
+            if (unownedData != null)
             {
                 unownedSyncObjects = Tools.Desrialize<List<NetworkObject.Data>>(Tools.Decompress(unownedData));
             }
+
             int s = -1;
             for (int i = 0; i < _globalObjects.Count; i++)
             {
@@ -376,7 +422,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 a = _globalObjects[s].accounts.Count;
                 _globalObjects[s].accounts.Add(newData);
             }
-            if (includeUnowned)
+            if (unownedSyncObjects.Count > 0)
             {
                 for (int i = 0; i < _globalObjects[s].accounts.Count; i++)
                 {
@@ -432,7 +478,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     for (int i = o; i < syncObjects.Count; i++)
                     {
                         // Instantiate the data without object
-                        if (syncObjects[i].prefab >= 0 && syncObjects[i].prefab < Client.instance.settings.prefabs.Length && Client.instance.settings.prefabs[syncObjects[i].prefab] != null)
+                        if (syncObjects[i].prefab >= 0 && syncObjects[i].prefab < Client.instance.settings.prefabs.Length && Client.instance.settings.prefabs[syncObjects[i].prefab] != null && !_destroyed.Contains(syncObjects[i].id))
                         {
                             NetworkObject networkObject = Instantiate(Client.instance.settings.prefabs[syncObjects[i].prefab], syncObjects[i].transform.position, syncObjects[i].transform.rotation);
                             networkObject.id = syncObjects[i].id;
@@ -446,7 +492,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 }
 
                 // Unowned
-                if (includeUnowned)
+                if (unownedSyncObjects.Count > 0)
                 {
                     o = 0;
                     for (int i = 0; i < _sceneObjects.Count; i++)
@@ -483,7 +529,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         for (int i = o; i < unownedSyncObjects.Count; i++)
                         {
                             // Instantiate the data without object
-                            if (unownedSyncObjects[i].prefab >= 0 && unownedSyncObjects[i].prefab < Client.instance.settings.prefabs.Length && Client.instance.settings.prefabs[unownedSyncObjects[i].prefab] != null)
+                            if (unownedSyncObjects[i].prefab >= 0 && unownedSyncObjects[i].prefab < Client.instance.settings.prefabs.Length && Client.instance.settings.prefabs[unownedSyncObjects[i].prefab] != null && !_destroyed.Contains(unownedSyncObjects[i].id))
                             {
                                 NetworkObject networkObject = Instantiate(Client.instance.settings.prefabs[unownedSyncObjects[i].prefab], unownedSyncObjects[i].transform.position, unownedSyncObjects[i].transform.rotation);
                                 networkObject.id = unownedSyncObjects[i].id;
@@ -502,9 +548,37 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     if (_sceneObjects[i] != null) { continue; }
                     _sceneObjects.RemoveAt(i);
                 }
+
+                if(scripts.Count > 0 && _sceneObjects.Count > 0)
+                {
+                    o = 0;
+                    for (int i = 0; i < _sceneObjects.Count; i++)
+                    {
+                        if (_sceneObjects[i] != null)
+                        {
+                            for (int j = o; j < scripts.Count; j++)
+                            {
+                                if (scripts[j].id == _sceneObjects[i].id)
+                                {
+                                    NetworkObject.ShortData taragetData = scripts[j];
+
+                                    for (int k = j; k > o; k--)
+                                    {
+                                        scripts[k] = scripts[k - 1];
+                                    }
+                                    scripts[o] = taragetData;
+
+                                    o++;
+                                    _sceneObjects[i]._ApplyData(taragetData);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
             _globalObjects[s].accounts[a].objects = syncObjects;
-            if (includeUnowned)
+            if (unownedSyncObjects.Count > 0)
             {
                 _globalObjects[s].accounts[u].objects = unownedSyncObjects;
             }
@@ -750,17 +824,26 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     int syScene = packet.ReadInt();
                     long syAccount = packet.ReadLong();
                     long syHost = packet.ReadLong();
-                    bool syUnowned = packet.ReadBool();
-                    int syDataLen = packet.ReadInt();
-                    byte[] syData = packet.ReadBytes(syDataLen);
+                    int syDataLen1 = packet.ReadInt();
+                    int syDataLen2 = packet.ReadInt();
+                    int syDataLen3 = packet.ReadInt();
+                    byte[] syData1 = null;
                     byte[] syData2 = null;
-                    if (syUnowned)
+                    byte[] syData3 = null;
+                    if (syDataLen1 > 0)
                     {
-                        syDataLen = packet.ReadInt();
-                        syData2 = packet.ReadBytes(syDataLen);
+                        syData1 = packet.ReadBytes(syDataLen1);
+                    }
+                    if (syDataLen2 > 0)
+                    {
+                        syData2 = packet.ReadBytes(syDataLen2);
+                    }
+                    if (syDataLen3 > 0)
+                    {
+                        syData3 = packet.ReadBytes(syDataLen3);
                     }
                     packet.Dispose();
-                    TickReceived(syData, syScene, syAccount, syHost, syUnowned, syData2);
+                    TickReceived(syScene, syAccount, syHost, syData1, syData2, syData3);
                     break;
                 case InternalID.SET_HOST:
                     int stScene = packet.ReadInt();
@@ -1178,6 +1261,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private void _DestroyObject(int scene, string id, long account, Vector3 position)
         {
+            _destroyed.Add(id);
+            if(_destroyed.Count > _maxDestroydTrack)
+            {
+                _destroyed.RemoveAt(0);
+            }
             if (sceneIndex == scene)
             {
                 for (int i = _sceneObjects.Count - 1; i >= 0; i--)
@@ -1186,10 +1274,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     {
                         if (_sceneObjects[i].id == id)
                         {
-                            if (_sceneObjects[i].ownerID < 0 || account == _sceneObjects[i].ownerID)
-                            {
-                                _sceneObjects[i]._Destroy(position);
-                            }
+                            _sceneObjects[i]._Destroy(position);
                             break;
                         }
                     }
@@ -1260,6 +1345,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
 
             }
+            else if (!target.canDestroy)
+            {
+
+            }
             else if (!instance._connected)
             {
 
@@ -1268,7 +1357,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
 
             }
-            else if (isGameStarted && target.isOwner)
+            else
             {
                 for (int i = _sceneObjects.Count - 1; i >= 0; i--)
                 {
@@ -1283,17 +1372,17 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 packet.Write(sceneIndex);
                 packet.Write(target.id);
                 packet.Write(target.transform.position);
+                _destroyed.Add(target.id);
+                if (_destroyed.Count > _maxDestroydTrack)
+                {
+                    _destroyed.RemoveAt(0);
+                }
                 SendTCPDataInternal(packet);
                 if (!target.isDestroying)
                 {
                     target._SetDestroy();
                     Destroy(target.gameObject);
-
                 }
-            }
-            else
-            {
-
             }
         }
 

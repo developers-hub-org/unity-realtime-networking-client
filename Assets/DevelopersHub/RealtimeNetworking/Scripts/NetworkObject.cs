@@ -1,6 +1,6 @@
 namespace DevelopersHub.RealtimeNetworking.Client
 {
-    using System.Collections;
+    using System;
     using System.Collections.Generic;
     using System.Reflection;
     using UnityEngine;
@@ -46,12 +46,16 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private bool _collided = false;
         private MonoBehaviour[] mono = null;
         private bool _initialized = false;
-
+        private WhoCanDestroy _whoCanDestroy = WhoCanDestroy.OwnerAndHost; public WhoCanDestroy whoCanDestroy { get { return _whoCanDestroy; } }
+        public bool canDestroy { get { return !((_whoCanDestroy == NetworkObject.WhoCanDestroy.OnlyOwner && !isOwner) || (_whoCanDestroy == NetworkObject.WhoCanDestroy.OnlyHost && !RealtimeNetworking.isSceneHost) || (_whoCanDestroy == NetworkObject.WhoCanDestroy.OwnerAndHost && !RealtimeNetworking.isSceneHost && !isOwner)); } }
+        public enum WhoCanDestroy
+        {
+            OnlyOwner = 1, OnlyHost = 2, OwnerAndHost = 3, Everyone = 4
+        }
         private void Awake()
         {
             Initialize();
         }
-
         public void Initialize()
         {
             if (_initialized)
@@ -84,20 +88,20 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private void Update()
         {
+            if (_destroying && _queueDestroy)
+            {
+                _destroyTimer += Time.deltaTime;
+                float t = _destroyTimer / _destroyTime;
+                if (t > 1f) { t = 1f; }
+                transform.position = Vector3.Lerp(_preDestroyOrigion, _preDestroyTarget, t);
+                if (transform.position == _preDestroyTarget && _withoutData)
+                {
+                    Destroy(gameObject);
+                }
+            }
             if (_syncTransform && RealtimeNetworking.isGameStarted && !isOwner)
             {
-                if(_destroying && _queueDestroy)
-                {
-                    _destroyTimer += Time.deltaTime;
-                    float t = _destroyTimer / _destroyTime;
-                    if (t > 1f) { t = 1f; }
-                    transform.position = Vector3.Lerp(_preDestroyOrigion, _preDestroyTarget, t);
-                    if (transform.position == _preDestroyTarget && _withoutData)
-                    {
-                        Destroy(gameObject);
-                    }
-                }
-                else
+                if(!_destroying || !_queueDestroy)
                 {
                     if (!_uncontrolledRigidbody)
                     {
@@ -132,7 +136,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private void OnDestroy()
         {
-            if (_destroying || !isOwner)
+            if (_destroying || !canDestroy)
             {
                 return;
             }
@@ -194,6 +198,13 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                 }
             }
+            data.scripts = GetVariables(SyncVariable.WhoCanChange.Owner, RealtimeNetworking.isSceneHost);
+            return data;
+        }
+
+        public ScriptData[] GetVariables(SyncVariable.WhoCanChange whoCanChange, bool getAll = false)
+        {
+            List<ScriptData> scripts = new List<ScriptData>();
             if (mono != null && mono.Length > 0)
             {
                 for (int m = 0; m < mono.Length; m++)
@@ -204,25 +215,42 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     vd.name = mono[m].name;
                     for (int f = 0; f < objectFields.Length; f++)
                     {
-                        if (PropertyAttribute.GetCustomAttribute(objectFields[f], typeof(SyncVariable)) != null)
+                        if (getAll)
                         {
-                            if(data.scripts == null)
+                            if(PropertyAttribute.GetCustomAttribute(objectFields[f], typeof(SyncVariable)) != null)
                             {
-                                data.scripts = new List<ScriptData>();
+                                Variable variable = new Variable();
+                                variable.name = objectFields[f].Name;
+                                variable.value = objectFields[f].GetValue(mono[m]);
+                                vd.variables.Add(variable);
                             }
-                            Variable variable = new Variable();
-                            variable.name = objectFields[f].Name;
-                            variable.value = objectFields[f].GetValue(mono[m]);
-                            vd.variables.Add(variable);
+                        }
+                        else
+                        {
+                            Attribute attribute = PropertyAttribute.GetCustomAttribute(objectFields[f], typeof(SyncVariable));
+                            if (attribute != null)
+                            {
+                                if (whoCanChange == ((SyncVariable)attribute).whoCanChange)
+                                {
+                                    Variable variable = new Variable();
+                                    variable.name = objectFields[f].Name;
+                                    variable.value = objectFields[f].GetValue(mono[m]);
+                                    vd.variables.Add(variable);
+                                }
+                            }
                         }
                     }
-                    if(vd.variables.Count > 0)
+                    if (vd.variables.Count > 0)
                     {
-                        data.scripts.Add(vd);
+                        scripts.Add(vd);
                     }
                 }
             }
-            return data;
+            if(scripts.Count <= 0)
+            {
+                return null;
+            }
+            return scripts.ToArray();
         }
 
         public void _ApplyData(Data data)
@@ -237,7 +265,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 for (int m = 0; m < mono.Length; m++)
                 {
                     if (mono[m] == null || mono[m] == this) { continue; }
-                    for (int i = o; i < data.scripts.Count; i++)
+                    for (int i = o; i < data.scripts.Length; i++)
                     {
                         if (mono[m].name == data.scripts[i].name)
                         {
@@ -348,6 +376,44 @@ namespace DevelopersHub.RealtimeNetworking.Client
             _time = Time.realtimeSinceStartup;
         }
 
+        public void _ApplyData(ShortData data)
+        {
+            if (data.scripts != null && mono != null && mono.Length > 0)
+            {
+                int o = 0;
+                for (int m = 0; m < mono.Length; m++)
+                {
+                    if (mono[m] == null || mono[m] == this) { continue; }
+                    for (int i = o; i < data.scripts.Length; i++)
+                    {
+                        if (mono[m].name == data.scripts[i].name)
+                        {
+                            ScriptData taragetData = data.scripts[i];
+                            for (int k = i; k > o; k--)
+                            {
+                                data.scripts[k] = data.scripts[k - 1];
+                            }
+                            data.scripts[o] = taragetData;
+                            o++;
+                            FieldInfo[] objectFields = mono[m].GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                            for (int v = 0; v < taragetData.variables.Count; v++)
+                            {
+                                for (int f = 0; f < objectFields.Length; f++)
+                                {
+                                    if (objectFields[f].Name == taragetData.variables[v].name)
+                                    {
+                                        objectFields[f].SetValue(mono[m], taragetData.variables[v].value);
+                                        break;
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         private void OnCollisionEnter()
         {
             _collided = true;
@@ -383,6 +449,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             _queueDestroy = true;
         }
 
+        [System.Serializable] 
         public class Data
         {
             public string id = string.Empty;
@@ -390,9 +457,17 @@ namespace DevelopersHub.RealtimeNetworking.Client
             public bool destroy = false;
             public TransformData transform = null;
             public AnimationData animation = null;
-            public List<ScriptData> scripts = null;
+            public ScriptData[] scripts = null;
         }
 
+        [System.Serializable]
+        public class ShortData
+        {
+            public string id = string.Empty;
+            public ScriptData[] scripts = null;
+        }
+
+        [System.Serializable]
         public class TransformData
         {
             public Vector3 position = Vector3.zero;
@@ -401,11 +476,13 @@ namespace DevelopersHub.RealtimeNetworking.Client
             public Vector3 velocity = Vector3.one;
         }
 
+        [System.Serializable]
         public class AnimationData
         {
             public List<Parameter> parameters = new List<Parameter>();
         }
 
+        [System.Serializable]
         public class Parameter
         {
             public string name = string.Empty;
@@ -413,12 +490,14 @@ namespace DevelopersHub.RealtimeNetworking.Client
             public object value = null;
         }
 
+        [System.Serializable]
         public class ScriptData
         {
             public string name = string.Empty;
             public List<Variable> variables = new List<Variable>();
         }
 
+        [System.Serializable]
         public class Variable
         {
             public string name = string.Empty;

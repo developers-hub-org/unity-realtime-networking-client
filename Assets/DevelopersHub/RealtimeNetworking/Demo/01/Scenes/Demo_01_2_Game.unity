@@ -1308,7 +1308,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Use W,S,A,D keys to move and Q,E keys to rotate.
+  m_Text: Use W,S,A,D keys to move and Q,E keys to rotate and F to fire.
 --- !u!222 &1814857448
 CanvasRenderer:
   m_ObjectHideFlags: 0

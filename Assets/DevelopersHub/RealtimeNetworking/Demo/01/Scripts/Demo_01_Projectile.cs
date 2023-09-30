@@ -7,7 +7,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
     public class Demo_01_Projectile : MonoBehaviour
     {
 
-        private int _damage = 1;
+        [SyncVariable] private int _damage = 1;
         private Demo_01_Controller _shooter = null;
         private Rigidbody _rigidbody = null;
         private Collider _collider = null;

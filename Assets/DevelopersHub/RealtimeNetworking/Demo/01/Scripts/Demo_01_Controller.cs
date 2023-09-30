@@ -7,7 +7,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
     public class Demo_01_Controller : MonoBehaviour
     {
 
-        [SyncVariable] public int health = 100;
+        [SyncVariable(whoCanChange = SyncVariable.WhoCanChange.Host)] public int health = 100;
 
         [SerializeField] private int _damage = 5;
         [SerializeField] private float _fireRate = 0.5f;
@@ -34,9 +34,12 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             if (_object != null && _object.isOwner)
             {
                 _controller = GetComponent<CharacterController>();
-                _camera.transform.SetParent(transform, false);
-                _camera.transform.localPosition = new Vector3(0, 6, -4);
-                _camera.transform.localEulerAngles = new Vector3(45, 0, 0);
+                if(_camera != null)
+                {
+                    _camera.transform.SetParent(transform, false);
+                    _camera.transform.localPosition = new Vector3(0, 6, -4);
+                    _camera.transform.localEulerAngles = new Vector3(45, 0, 0);
+                }
             }
             if(_healthPrefab != null)
             {
@@ -100,21 +103,25 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             {
                 Destroy(_healthBar.gameObject);
             }
+            if(_object != null && _object.isOwner)
+            {
+                if (_camera != null)
+                {
+                    _camera.transform.SetParent(null);
+                    _camera.enabled = true;
+                }
+            }
         }
 
         public void ApplyDamage(int damage)
         {
-            if (_object == null || _object.isOwner == false)
+            if (!RealtimeNetworking.isSceneHost)
             {
                 return;
             }
             health -= damage;
             if(health < 0)
             {
-                if(_camera != null)
-                {
-                    _camera.transform.SetParent(null);
-                }
                 Destroy(gameObject);
             }
         }

@@ -17,7 +17,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             RealtimeNetworking.OnLeaveRoom += OnLeaveRoom;
             if (RealtimeNetworking.isGameStarted)
             {
-                RealtimeNetworking.InstantiatePrefab(0, new Vector3(0, 1f, 0), Quaternion.identity, true, true);
+                RealtimeNetworking.InstantiatePrefab(0, new Vector3(Random.Range(-2f, 2f), 1f, Random.Range(-2f, 2f)), Quaternion.identity, true, true);
             }
             buttonQuit.onClick.AddListener(OnQuitClicked);
         }
