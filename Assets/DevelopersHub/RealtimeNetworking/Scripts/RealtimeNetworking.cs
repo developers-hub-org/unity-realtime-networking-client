@@ -5,7 +5,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System.Collections.Generic;
     using UnityEngine;
     using UnityEngine.SceneManagement;
-    using static DevelopersHub.RealtimeNetworking.Client.Packet;
 
     public class RealtimeNetworking : MonoBehaviour
     {
