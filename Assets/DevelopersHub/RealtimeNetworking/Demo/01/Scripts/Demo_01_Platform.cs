@@ -23,7 +23,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
         private void Update()
         {
 
-            if (_object == null || _object.isOwner == false)
+            if (_object == null || !RealtimeNetworking.isSceneHost)
             {
                 return;
             }

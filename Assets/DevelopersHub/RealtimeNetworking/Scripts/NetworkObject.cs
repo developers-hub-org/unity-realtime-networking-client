@@ -48,14 +48,17 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private bool _initialized = false;
         private WhoCanDestroy _whoCanDestroy = WhoCanDestroy.OwnerAndHost; public WhoCanDestroy whoCanDestroy { get { return _whoCanDestroy; } }
         public bool canDestroy { get { return !((_whoCanDestroy == NetworkObject.WhoCanDestroy.OnlyOwner && !isOwner) || (_whoCanDestroy == NetworkObject.WhoCanDestroy.OnlyHost && !RealtimeNetworking.isSceneHost) || (_whoCanDestroy == NetworkObject.WhoCanDestroy.OwnerAndHost && !RealtimeNetworking.isSceneHost && !isOwner)); } }
+        
         public enum WhoCanDestroy
         {
             OnlyOwner = 1, OnlyHost = 2, OwnerAndHost = 3, Everyone = 4
         }
+
         private void Awake()
         {
             Initialize();
         }
+       
         public void Initialize()
         {
             if (_initialized)
@@ -136,12 +139,19 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private void OnDestroy()
         {
+            if(isOwner && !_destroyOnLeave)
+            {
+                RealtimeNetworking.instance.ChangeOwner(this);
+            }
             if (_destroying || !canDestroy)
             {
                 return;
             }
             _destroying = true;
-            RealtimeNetworking.instance._DestroyObject(this);
+            if (_destroyOnLeave)
+            {
+                RealtimeNetworking.instance._DestroyObject(this);
+            }
         }
 
         public Data GetData()

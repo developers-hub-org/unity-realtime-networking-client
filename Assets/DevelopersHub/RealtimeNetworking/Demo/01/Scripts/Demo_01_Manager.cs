@@ -28,6 +28,8 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
 
         private List<Demo_01_Room> _rooms = new List<Demo_01_Room>();
         private List<Demo_01_LobbyPlayer> _players = new List<Demo_01_LobbyPlayer>();
+        
+        public static bool isSpawnedPlayer = false;
 
         private void Start()
         {
@@ -326,6 +328,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             }
             else if (response == RealtimeNetworking.RoomUpdateType.GAME_STARTED)
             {
+                isSpawnedPlayer = false;
                 LoadGameScene();
             }
             if (room.hostID == RealtimeNetworking.accountID && response != RealtimeNetworking.RoomUpdateType.ROOM_DELETED && response != RealtimeNetworking.RoomUpdateType.GAME_STARTED)

@@ -1,7 +1,5 @@
 namespace DevelopersHub.RealtimeNetworking.Client.Demo
 {
-    using System.Collections;
-    using System.Collections.Generic;
     using UnityEngine;
     using UnityEngine.UI;
     using UnityEngine.SceneManagement;
@@ -15,7 +13,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
         private void Start()
         {
             RealtimeNetworking.OnLeaveRoom += OnLeaveRoom;
-            if (RealtimeNetworking.isGameStarted)
+            if (RealtimeNetworking.isGameStarted && !Demo_01_Manager.isSpawnedPlayer)
             {
                 RealtimeNetworking.InstantiatePrefab(0, new Vector3(Random.Range(-2f, 2f), 1f, Random.Range(-2f, 2f)), Quaternion.identity, true, true);
             }

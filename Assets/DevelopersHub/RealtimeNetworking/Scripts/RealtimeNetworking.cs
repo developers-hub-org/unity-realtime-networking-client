@@ -6,7 +6,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using UnityEngine;
     using UnityEngine.SceneManagement;
     using static DevelopersHub.RealtimeNetworking.Client.Packet;
-    using static UnityEngine.GraphicsBuffer;
 
     public class RealtimeNetworking : MonoBehaviour
     {
@@ -25,6 +24,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event KickFromRoomCallback OnKickFromRoom;
         public static event RoomStatusCallback OnChangeRoomStatus;
         public static event StartRoomCallback OnRoomStartGame;
+        public static event ChangeOwnerCallback OnOwnerChanged;
         #endregion
 
         #region Callbacks
@@ -41,6 +41,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void KickFromRoomCallback(KickFromRoomResponse response);
         public delegate void RoomStatusCallback(RoomStatusResponse response, bool ready);
         public delegate void StartRoomCallback(StartRoomResponse response);
+        public delegate void ChangeOwnerCallback(NetworkObject target, long oldOwner, long newOwner);
         #endregion
 
         private bool _initialized = false;
@@ -141,6 +142,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 _sceneObjects.AddRange(obj);
             }
+            SetupScene();
         }
 
         private void Initialize()
@@ -155,11 +157,13 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private void OnEnable()
         {
             SceneManager.sceneLoaded += OnSceneLoaded;
+            SceneManager.sceneUnloaded += OnSceneUnloaded;
         }
 
         private void OnDisable()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            SceneManager.sceneUnloaded -= OnSceneUnloaded;
         }
 
         private void Update()
@@ -594,6 +598,54 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 _sceneObjects.AddRange(obj);
             }
+            SetupScene();
+        }
+
+        private void OnSceneUnloaded(Scene scene)
+        {
+
+        }
+
+        private void SetupScene()
+        {
+            if(_sceneObjects.Count > 0 && _globalObjects.Count > 0)
+            {
+                for (int i = 0; i < _globalObjects.Count; i++)
+                {
+                    if (_globalObjects[i].sceneIndex == sceneIndex)
+                    {
+                        for (int j = 0; j < _sceneObjects.Count; j++)
+                        {
+                            if (_sceneObjects[j] != null)
+                            {
+                                bool found = false;
+                                for (int k = 0; k < _globalObjects[i].accounts.Count; k++)
+                                {
+                                    for (int o = 0; o < _globalObjects[i].accounts[k].objects.Count; o++)
+                                    {
+                                        if (_globalObjects[i].accounts[k].objects[o].id == _sceneObjects[j].id)
+                                        {
+                                            _sceneObjects[j]._Initialize(_globalObjects[i].accounts[k].accountID, _globalObjects[i].accounts[k].objects[o].destroy);
+                                            _sceneObjects[j]._ApplyData(_globalObjects[i].accounts[k].objects[o]);
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                    if (found)
+                                    {
+                                        break;
+                                    }
+                                }
+                                if (!found)
+                                {
+                                    // Destroy ?
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
         }
 
         public static void Connect()
@@ -757,7 +809,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
                     if (upRoomTyp == (int)RoomUpdateType.PLAYER_KICKED)
                     {
-                        if(upTargetPlayer.id == accountID)
+                        if (upTargetPlayer.id == accountID)
                         {
                             _inGame = false;
                         }
@@ -861,6 +913,38 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     System.Numerics.Vector3 dsPos = packet.ReadVector3();
                     packet.Dispose();
                     _DestroyObject(dsScene, dsId, dsAccount, new Vector3(dsPos.X, dsPos.Y, dsPos.Z));
+                    break;
+                case InternalID.CHANGE_OWNER:
+                    int coScene = packet.ReadInt();
+                    long coAccount = packet.ReadLong();
+                    int coDataLen = packet.ReadInt();
+                    byte[] coData = packet.ReadBytes(coDataLen);
+                    long coOwner = packet.ReadLong();
+                    packet.Dispose();
+                    _ChangeOwner(coScene, coData, coAccount, coOwner);
+                    break;
+                case InternalID.CHANGE_OWNER_CONFIRM:
+                    int cofScene = packet.ReadInt();
+                    string cofId = packet.ReadString();
+                    System.Numerics.Vector3 cofPos = packet.ReadVector3(); // Todo
+                    long cofOwner = packet.ReadLong();
+                    packet.Dispose();
+                    if(sceneIndex == cofScene)
+                    {
+                        for (int i = 0; i < _sceneObjects.Count; i++)
+                        {
+                            if (_sceneObjects[i].id == cofId)
+                            {
+                                long cfold = _sceneObjects[i].ownerID;
+                                _sceneObjects[i]._Initialize(cofOwner, _sceneObjects[i].destroyOnLeave);
+                                if (OnOwnerChanged != null)
+                                {
+                                    OnOwnerChanged.Invoke(_sceneObjects[i], cfold, cofOwner);
+                                }
+                                break;
+                            }
+                        }
+                    }
                     break;
             }
         }
@@ -1206,7 +1290,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private enum InternalID
         {
-            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11, SET_HOST = 12, DESTROY_OBJECT = 13
+            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15
         }
 
         public enum AuthenticationResponse
@@ -1257,6 +1341,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public enum StartRoomResponse
         {
             UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6
+        }
+
+        public enum ChangeOwnerResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_Game = 4, DONT_HAVE_PERMISSION = 5
         }
 
         private void _DestroyObject(int scene, string id, long account, Vector3 position)
@@ -1339,6 +1428,96 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        public void ChangeOwner(NetworkObject target)
+        {
+            ChangeOwner(target, -1);
+        }
+
+        public void ChangeOwner(List<NetworkObject> target)
+        {
+            ChangeOwner(target, -1);
+        }
+
+        public void ChangeOwner(NetworkObject target, long newOwner)
+        {
+            if(target == null)
+            {
+                return;
+            }
+            List<NetworkObject> objects = new List<NetworkObject>();
+            objects.Add(target);
+            ChangeOwner(objects, newOwner);
+        }
+
+        public void ChangeOwner(List<NetworkObject> target, long newOwner)
+        {
+            if (target == null)
+            {
+
+            }
+            else if (!instance._connected)
+            {
+
+            }
+            else if (!instance._authenticated)
+            {
+
+            }
+            else
+            {
+
+                for (int i = target.Count - 1; i >= 0; i--)
+                {
+                    if (target[i] == null || target[i].ownerID == newOwner || !((target[i].ownerID >= 0 && target[i].isOwner) || target[i].ownerID < 0))
+                    {
+                        target.RemoveAt(i);
+                    }
+                }
+                if(target.Count > 0)
+                {
+                    byte[] data = Tools.Compress(Tools.Serialize<List<NetworkObject>>(target));
+                    Packet packet = new Packet();
+                    packet.Write((int)InternalID.CHANGE_OWNER);
+                    packet.Write(sceneIndex);
+                    packet.Write(data.Length);
+                    packet.Write(data);
+                    packet.Write(newOwner);
+                    SendTCPDataInternal(packet);
+                }
+            }
+        }
+
+        private void _ChangeOwner(int scene, byte[] coData, long account, long newOwner)
+        {
+            List<NetworkObject> objects = Tools.Desrialize<List<NetworkObject>>(Tools.Decompress(coData));
+            List<NetworkObject> targets = new List<NetworkObject>();
+            for (int o = 0; o < objects.Count; o++)
+            {
+                for (int i = 0; i < _sceneObjects.Count; i++)
+                {
+                    if (_sceneObjects[i] != null)
+                    {
+                        if (_sceneObjects[i].id == objects[o].id)
+                        {
+                            if (_sceneObjects[i].ownerID < 0 || (newOwner < 0 && _sceneObjects[i].ownerID == account))
+                            {
+                                _sceneObjects[i]._Initialize(newOwner, _sceneObjects[i].destroyOnLeave);
+                                Packet packet = new Packet();
+                                packet.Write((int)InternalID.CHANGE_OWNER_CONFIRM);
+                                packet.Write(sceneIndex);
+                                packet.Write(_sceneObjects[i].id);
+                                packet.Write(_sceneObjects[i].transform.position);
+                                packet.Write(newOwner);
+                                packet.Write(account);
+                                SendTCPDataInternal(packet);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         public void _DestroyObject(NetworkObject target)
         {
             if (target == null)
@@ -1383,6 +1562,14 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     target._SetDestroy();
                     Destroy(target.gameObject);
                 }
+            }
+        }
+
+        public void LoadScene(string sceneName, List<NetworkObject> objectsToTransport)
+        {
+            if (SceneUtility.GetBuildIndexByScenePath(sceneName) >= 0)
+            {
+                SceneManager.LoadScene(sceneName);
             }
         }
 
