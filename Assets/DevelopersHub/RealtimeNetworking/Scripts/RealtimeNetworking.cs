@@ -24,6 +24,16 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event RoomStatusCallback OnChangeRoomStatus;
         public static event StartRoomCallback OnRoomStartGame;
         public static event ChangeOwnerCallback OnOwnerChanged;
+
+        public static event CreatePartyCallback OnCreateParty;
+        public static event LeavePartyCallback OnLeaveParty;
+        public static event InvitePartyCallback OnInviteToParty;
+        public static event InvitedToPartyCallback OnBeingInvitedToParty;
+        public static event PartyUpdateCallback OnPartyUpdated;
+        public static event GetFriendsCallback OnGetFriends;
+        public static event InvitePartyAnswerCallback OnAnswerPartyInvite;
+        public static event GetPlayerCallback OnGetPlayerData;
+        public static event KickPartyCallback OnKickPartyMember;
         #endregion
 
         #region Callbacks
@@ -41,6 +51,15 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void RoomStatusCallback(RoomStatusResponse response, bool ready);
         public delegate void StartRoomCallback(StartRoomResponse response);
         public delegate void ChangeOwnerCallback(NetworkObject target, long oldOwner, long newOwner);
+        public delegate void CreatePartyCallback(CreatePartyResponse response, Data.Party party);
+        public delegate void LeavePartyCallback(LeavePartyResponse response);
+        public delegate void PartyUpdateCallback(PartyUpdateType response, Data.Party party, Data.Player targetPlayer);
+        public delegate void GetFriendsCallback(List<Data.Friend> friends);
+        public delegate void GetPlayerCallback(long id, Data.PlayerProfile player);
+        public delegate void InvitePartyCallback(InvitePartyResponse response);
+        public delegate void InvitedToPartyCallback(Data.PlayerProfile player, string partyID);
+        public delegate void InvitePartyAnswerCallback(InvitePartyAnswerResponse response, Data.Party party);
+        public delegate void KickPartyCallback(KickPartyResponse response);
         #endregion
 
         private bool _initialized = false;
@@ -150,6 +169,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 return;
             }
+            Application.runInBackground = true;
             _initialized = true;
         }
 
@@ -945,6 +965,119 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         }
                     }
                     break;
+                case InternalID.CREATE_PARTY:
+                    int crPartyRes = packet.ReadInt();
+                    Data.Party crParty = null;
+                    if (crPartyRes == (int)CreatePartyResponse.SUCCESSFULL)
+                    {
+                        int crPartyBytesLen = packet.ReadInt();
+                        byte[] crPartyBytes = packet.ReadBytes(crPartyBytesLen);
+                        crParty = Tools.Desrialize<Data.Party>(Tools.Decompress(crPartyBytes));
+                    }
+                    packet.Dispose();
+                    if (OnCreateParty != null)
+                    {
+                        OnCreateParty.Invoke((CreatePartyResponse)crPartyRes, crParty);
+                    }
+                    break;
+                case InternalID.LEAVE_PARTY:
+                    if (OnLeaveParty != null)
+                    {
+                        int lvPartyRes = packet.ReadInt();
+                        OnLeaveParty.Invoke((LeavePartyResponse)lvPartyRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.PARTY_UPDATED:
+                    int upPartyTyp = packet.ReadInt();
+                    Data.Party upParty = null;
+                    Data.Player upPartyPlayer = null;
+
+                    int puBytesLen = packet.ReadInt();
+                    byte[] puBytes = packet.ReadBytes(puBytesLen);
+                    upParty = Tools.Desrialize<Data.Party>(Tools.Decompress(puBytes));
+
+                    if (upPartyTyp == (int)PartyUpdateType.PLAYER_JOINED || upPartyTyp == (int)PartyUpdateType.PLAYER_LEFT || upPartyTyp == (int)PartyUpdateType.PLAYER_KICKED)
+                    {
+                        puBytesLen = packet.ReadInt();
+                        puBytes = packet.ReadBytes(puBytesLen);
+                        upPartyPlayer = Tools.Desrialize<Data.Player>(Tools.Decompress(puBytes));
+                    }
+
+                    if (OnPartyUpdated != null)
+                    {
+                        OnPartyUpdated.Invoke((PartyUpdateType)upPartyTyp, upParty, upPartyPlayer);
+                    }
+                    break;
+                case InternalID.GET_FRIENDS:
+                    int gfLen = packet.ReadInt();
+                    if (OnGetFriends != null)
+                    {
+                        if(gfLen > 0)
+                        {
+                            OnGetFriends.Invoke(Tools.Desrialize<List<Data.Friend>>(Tools.Decompress(packet.ReadBytes(gfLen))));
+                        }
+                        else
+                        {
+                            OnGetFriends.Invoke(new List<Data.Friend>());
+                        }
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.GET_PROFILE:
+                    if (OnGetFriends != null)
+                    {
+                        int gpRes = packet.ReadInt();
+                        long gpId = packet.ReadLong();
+                        if (gpRes == 1)
+                        {
+                            gpRes = packet.ReadInt();
+                            OnGetPlayerData.Invoke(gpId, Tools.Desrialize<Data.PlayerProfile>(Tools.Decompress(packet.ReadBytes(gpRes))));
+                        }
+                        else
+                        {
+                            OnGetPlayerData.Invoke(gpId, null);
+                        }
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.INVITE_PARTY:
+                    int ipTyp = packet.ReadInt();
+                    if(ipTyp == 1)
+                    {
+                        int ipRes = packet.ReadInt();
+                        if (OnInviteToParty != null)
+                        {
+                            OnInviteToParty.Invoke((InvitePartyResponse)ipRes);
+                        }
+                    }
+                    else
+                    {
+                        string ipID = packet.ReadString();
+                        int ipDataLen = packet.ReadInt();
+                        if (OnBeingInvitedToParty != null)
+                        {
+                            OnBeingInvitedToParty.Invoke(Tools.Desrialize<Data.PlayerProfile>(Tools.Decompress(packet.ReadBytes(ipDataLen))), ipID);
+                        }
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.ANSWER_PARTY_INVITE:
+                    int piAms = packet.ReadInt();
+                    bool piHav = packet.ReadBool();
+                    if (OnAnswerPartyInvite != null)
+                    {
+                        Data.Party piParty = null;
+                        if (piHav)
+                        {
+                            int piBytesLen = packet.ReadInt();
+                            byte[] piBytes = packet.ReadBytes(piBytesLen);
+                            piParty = Tools.Desrialize<Data.Party>(Tools.Decompress(packet.ReadBytes(piBytesLen)));
+                        }
+                        OnAnswerPartyInvite.Invoke((InvitePartyAnswerResponse)piAms, piParty);
+                    }
+                    packet.Dispose();
+                    break;
             }
         }
 
@@ -1037,12 +1170,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static void CreateRoom(int gameID, int team)
+        public static void CreateRoom(int gameID, int team, int maxPlayers = 0)
         {
-            CreateRoom(gameID, team, "");
+            CreateRoom(gameID, team, "", maxPlayers);
         }
 
-        public static void CreateRoom(int gameID, int team, string password)
+        public static void CreateRoom(int gameID, int team, string password, int maxPlayers = 0)
         {
             if (!instance._connected)
             {
@@ -1069,6 +1202,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 packet.Write(password);
                 packet.Write(gameID);
                 packet.Write(team);
+                packet.Write(maxPlayers);
                 SendTCPDataInternal(packet);
             }
         }
@@ -1255,6 +1389,156 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        public static void GetPlayerData(long id)
+        {
+            if (!instance._connected)
+            {
+                if (OnGetPlayerData != null)
+                {
+                    OnGetPlayerData.Invoke(id, null);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnGetPlayerData != null)
+                {
+                    OnGetPlayerData.Invoke(id, null);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.GET_PROFILE);
+                packet.Write(id);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void CreateParty(int maxPlayers = 0)
+        {
+            if (!instance._connected)
+            {
+                if (OnCreateParty != null)
+                {
+                    OnCreateParty.Invoke(CreatePartyResponse.NOT_CONNECTED, null);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnCreateParty != null)
+                {
+                    OnCreateParty.Invoke(CreatePartyResponse.NOT_AUTHENTICATED, null);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.CREATE_PARTY);
+                packet.Write(maxPlayers);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void InviteToParty(long id)
+        {
+            if (!instance._connected)
+            {
+                if (OnInviteToParty != null)
+                {
+                    OnInviteToParty.Invoke(InvitePartyResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnInviteToParty != null)
+                {
+                    OnInviteToParty.Invoke(InvitePartyResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.INVITE_PARTY);
+                packet.Write(id);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void KickPartyMember(long id)
+        {
+            if (!instance._connected)
+            {
+                if (OnKickPartyMember != null)
+                {
+                    OnKickPartyMember.Invoke(KickPartyResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnKickPartyMember != null)
+                {
+                    OnKickPartyMember.Invoke(KickPartyResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.KICK_PARTY_MEMBER);
+                packet.Write(id);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void LeaveParty()
+        {
+            if (!instance._connected)
+            {
+                if (OnLeaveParty != null)
+                {
+                    OnLeaveParty.Invoke(LeavePartyResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnLeaveParty != null)
+                {
+                    OnLeaveParty.Invoke(LeavePartyResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.LEAVE_PARTY);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void AnswerPartyInvite(string partyID, bool accept)
+        {
+            if (!instance._connected)
+            {
+                if (OnAnswerPartyInvite != null)
+                {
+                    OnAnswerPartyInvite.Invoke(InvitePartyAnswerResponse.NOT_CONNECTED, null);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnAnswerPartyInvite != null)
+                {
+                    OnAnswerPartyInvite.Invoke(InvitePartyAnswerResponse.NOT_AUTHENTICATED, null);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.ANSWER_PARTY_INVITE);
+                packet.Write(partyID);
+                packet.Write(accept);
+                SendTCPDataInternal(packet);
+            }
+        }
+
         public static NetworkObject InstantiatePrefab(int index, Vector3 position, Quaternion rotation, bool own = true, bool destroyOnLeave = false)
         {
             return instance._Instantiate(index, position, rotation, own, destroyOnLeave);
@@ -1289,7 +1573,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private enum InternalID
         {
-            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15
+            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15, CREATE_PARTY = 16, INVITE_PARTY = 17, LEAVE_PARTY = 18, KICK_PARTY_MEMBER = 19, JOIN_MATCHMAKING = 20, LEAVE_MATCHMAKING = 21, PARTY_UPDATED = 22, GET_FRIENDS = 23, ADD_FRIEND = 24, REMOVE_FRIEND = 25, FRIEND_UPDATED = 26, GET_PROFILE = 27, ANSWER_PARTY_INVITE = 28
+        }
+
+        public enum PartyUpdateType
+        {
+            PLAYER_JOINED = 1, PLAYER_LEFT = 2, PLAYER_KICKED = 3, MATCHMAKING_STARTED = 4, MATCHMAKING_STOPPED = 5
         }
 
         public enum AuthenticationResponse
@@ -1345,6 +1634,31 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public enum ChangeOwnerResponse
         {
             UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_Game = 4, DONT_HAVE_PERMISSION = 5
+        }
+
+        public enum CreatePartyResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_PARTY = 4
+        }
+
+        public enum LeavePartyResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4
+        }
+        
+        public enum InvitePartyResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, YOU_DONT_HAVE_PARTY = 4, NOT_ONLINE = 5, ALREADY_INVITED = 6
+        }
+
+        public enum InvitePartyAnswerResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_INVITED = 4, MAX_CAPACITY = 5, ALREADY_IN_PARTY = 6
+        }
+
+        public enum KickPartyResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4, DONT_HAVE_PERMISSION = 5, TARGET_NOT_FOUND = 6
         }
 
         private void _DestroyObject(int scene, string id, long account, Vector3 position)
