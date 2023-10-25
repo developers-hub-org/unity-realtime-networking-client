@@ -42,6 +42,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             RealtimeNetworking.OnCreateRoom += OnCreateRoom;
             RealtimeNetworking.OnJoinRoom += OnJoinRoom;
             RealtimeNetworking.OnRoomUpdated += OnRoomUpdated;
+            RealtimeNetworking.OnGameStarted += OnGameStarted;
 
             buttonConnect.onClick.AddListener(ConnectClicked);
             buttonAuth.onClick.AddListener(AuthClicked);
@@ -65,6 +66,12 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
                 buttonConnect.interactable = false;
                 buttonAuth.interactable = true;
             }
+        }
+
+        private void OnGameStarted()
+        {
+            isSpawnedPlayer = false;
+            LoadGameScene();
         }
 
         private void OnDestroy()
@@ -165,7 +172,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
         private void CreateRoomClicked()
         {
             buttonCreate.interactable = false;
-            RealtimeNetworking.CreateRoom(0, 0);
+            RealtimeNetworking.CreateRoom(0, 0, 0);
         }
 
         private void ClearRoomsList()
@@ -326,12 +333,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
                     _players.Add(p);
                 }
             }
-            else if (response == RealtimeNetworking.RoomUpdateType.GAME_STARTED)
-            {
-                isSpawnedPlayer = false;
-                LoadGameScene();
-            }
-            if (room.hostID == RealtimeNetworking.accountID && response != RealtimeNetworking.RoomUpdateType.ROOM_DELETED && response != RealtimeNetworking.RoomUpdateType.GAME_STARTED)
+            if (room.hostID == RealtimeNetworking.accountID && response != RealtimeNetworking.RoomUpdateType.ROOM_DELETED)
             {
                 CheckCanStart();
             }

@@ -12,7 +12,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
 
         private void Start()
         {
-            RealtimeNetworking.OnLeaveRoom += OnLeaveRoom;
+            RealtimeNetworking.OnLeaveGame += OnLeaveGame;
             if (RealtimeNetworking.isGameStarted && !Demo_01_Manager.isSpawnedPlayer)
             {
                 RealtimeNetworking.InstantiatePrefab(0, new Vector3(Random.Range(-2f, 2f), 1f, Random.Range(-2f, 2f)), Quaternion.identity, true, true);
@@ -22,18 +22,18 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
 
         private void OnDestroy()
         {
-            RealtimeNetworking.OnLeaveRoom -= OnLeaveRoom;
+            RealtimeNetworking.OnLeaveGame -= OnLeaveGame;
         }
 
         private void OnQuitClicked()
         {
             buttonQuit.interactable = false;
-            RealtimeNetworking.LeaveRoom();
+            RealtimeNetworking.LeaveGame();
         }
 
-        private void OnLeaveRoom(RealtimeNetworking.LeaveRoomResponse response)
+        private void OnLeaveGame(RealtimeNetworking.LeaveGameResponse response)
         {
-            if(response == RealtimeNetworking.LeaveRoomResponse.SUCCESSFULL)
+            if(response == RealtimeNetworking.LeaveGameResponse.SUCCESSFULL)
             {
                 if (SceneUtility.GetBuildIndexByScenePath(menuSceneName) >= 0)
                 {

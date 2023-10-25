@@ -24,7 +24,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event RoomStatusCallback OnChangeRoomStatus;
         public static event StartRoomCallback OnRoomStartGame;
         public static event ChangeOwnerCallback OnOwnerChanged;
-
         public static event CreatePartyCallback OnCreateParty;
         public static event LeavePartyCallback OnLeaveParty;
         public static event InvitePartyCallback OnInviteToParty;
@@ -34,6 +33,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event InvitePartyAnswerCallback OnAnswerPartyInvite;
         public static event GetPlayerCallback OnGetPlayerData;
         public static event KickPartyCallback OnKickPartyMember;
+        public static event StartMatchmakingCallback OnStartMatchmaking;
+        public static event StopMatchmakingCallback OnStopMatchmaking;
+        public static event NoCallback OnMatchmakingStarted;
+        public static event NoCallback OnMatchmakingStopped;
+        public static event NoCallback OnGameStarted;
+        public static event LeaveGameCallback OnLeaveGame;
         #endregion
 
         #region Callbacks
@@ -60,6 +65,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void InvitedToPartyCallback(Data.PlayerProfile player, string partyID);
         public delegate void InvitePartyAnswerCallback(InvitePartyAnswerResponse response, Data.Party party);
         public delegate void KickPartyCallback(KickPartyResponse response);
+        public delegate void StartMatchmakingCallback(StartMatchmakingResponse response);
+        public delegate void StopMatchmakingCallback(StopMatchmakingResponse response);
+        public delegate void LeaveGameCallback(LeaveGameResponse response);
         #endregion
 
         private bool _initialized = false;
@@ -79,7 +87,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private HashSet<long> _disconnected = new HashSet<long>();
         private int _maxDestroydTrack = 10;
         private List<string> _destroyed = new List<string>();
-        private Data.Room _gameRoom = null;
+        private Data.Room _room = null;
+        private Data.Game _game = null;
         private int _ticksPerSecond = 10;
         private int _ticksCalled = 0;
         private float _ticksTimer = 0;
@@ -291,7 +300,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         data3 = Tools.Compress(Tools.Serialize<List<NetworkObject.Data>>(unownedSyncObjects));
                     }
                     Packet packet = new Packet();
-                    packet.Write((int)InternalID.SYNC_ROOM_PLAYER);
+                    packet.Write((int)InternalID.SYNC_GAME);
                     packet.Write(sceneIndex);
                     packet.Write(data1 == null ? 0 : data1.Length);
                     packet.Write(data2 == null ? 0 : data2.Length);
@@ -685,7 +694,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             _globalObjects.Clear();
             _inGame = false;
-            _gameRoom = null;
+            _room = null;
+            _game = null;
             _connected = false;
             _accountID = -1;
             _authenticated = false;
@@ -846,20 +856,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     {
                         _inGame = false;
                     }
-                    else if (upRoomTyp == (int)RoomUpdateType.GAME_STARTED)
-                    {
-                        _globalObjects.Clear();
-                        _inGame = true;
-                        _ticksTimer = 0;
-                        _ticksCalled = 0;
-                        _disconnected.Clear();
-                    }
 
-                    if (_gameRoom != null && _gameRoom.hostID == upRoom.hostID)
+                    if (_room != null && _room.hostID == upRoom.hostID)
                     {
                         // OnHostChanged
                     }
-                    _gameRoom = upRoom;
+                    _room = upRoom;
 
                     if (OnRoomUpdated != null)
                     {
@@ -891,7 +893,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         OnRoomStartGame.Invoke((StartRoomResponse)stRoomRes);
                     }
                     break;
-                case InternalID.SYNC_ROOM_PLAYER:
+                case InternalID.SYNC_GAME:
                     int syScene = packet.ReadInt();
                     long syAccount = packet.ReadLong();
                     long syHost = packet.ReadLong();
@@ -1078,6 +1080,62 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                     packet.Dispose();
                     break;
+                case InternalID.JOIN_MATCHMAKING:
+                    if (OnStartMatchmaking != null)
+                    {
+                        int strmRes = packet.ReadInt();
+                        OnStartMatchmaking.Invoke((StartMatchmakingResponse)strmRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.LEAVE_MATCHMAKING:
+                    if (OnStopMatchmaking != null)
+                    {
+                        int stpmRes = packet.ReadInt();
+                        OnStopMatchmaking.Invoke((StopMatchmakingResponse)stpmRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.MATCHMAKING_STARTED:
+                    if (OnMatchmakingStarted != null)
+                    {
+                        OnMatchmakingStarted.Invoke();
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.MATCHMAKING_STOPPED:
+                    if (OnMatchmakingStopped != null)
+                    {
+                        OnMatchmakingStopped.Invoke();
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.GAME_STARTED:
+                    int stBytesLen = packet.ReadInt();
+                    byte[] stBytes = packet.ReadBytes(stBytesLen);
+                    _game = Tools.Desrialize<Data.Game>(Tools.Decompress(stBytes));
+                    // upBytesLen = packet.ReadInt();
+                    // upBytes = packet.ReadBytes(upBytesLen);
+                    // Data.Player stPlayer = Tools.Desrialize<Data.Player>(Tools.Decompress(upBytes));
+                    _globalObjects.Clear();
+                    _inGame = true;
+                    _ticksTimer = 0;
+                    _ticksCalled = 0;
+                    _disconnected.Clear();
+                    if (OnGameStarted != null)
+                    {
+                        OnGameStarted.Invoke();
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.LEAVE_GAME:
+                    if (OnLeaveGame != null)
+                    {
+                        int lvGameRes = packet.ReadInt();
+                        OnLeaveGame.Invoke((LeaveGameResponse)lvGameRes);
+                    }
+                    packet.Dispose();
+                    break;
             }
         }
 
@@ -1170,12 +1228,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static void CreateRoom(int gameID, int team, int maxPlayers = 0)
+        public static void CreateRoom(int gameType, int mapID, int team, int maxPlayers = 0)
         {
-            CreateRoom(gameID, team, "", maxPlayers);
+            CreateRoom(gameType, mapID, team, "", maxPlayers);
         }
 
-        public static void CreateRoom(int gameID, int team, string password, int maxPlayers = 0)
+        public static void CreateRoom(int gameType, int mapID, int team, string password, int maxPlayers = 0)
         {
             if (!instance._connected)
             {
@@ -1200,7 +1258,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 Packet packet = new Packet();
                 packet.Write((int)InternalID.CREATE_ROOM);
                 packet.Write(password);
-                packet.Write(gameID);
+                packet.Write(gameType);
+                packet.Write(mapID);
                 packet.Write(team);
                 packet.Write(maxPlayers);
                 SendTCPDataInternal(packet);
@@ -1389,6 +1448,30 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        public static void LeaveGame()
+        {
+            if (!instance._connected)
+            {
+                if (OnLeaveGame != null)
+                {
+                    OnLeaveGame.Invoke(LeaveGameResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnLeaveGame != null)
+                {
+                    OnLeaveGame.Invoke(LeaveGameResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.LEAVE_GAME);
+                SendTCPDataInternal(packet);
+            }
+        }
+
         public static void GetPlayerData(long id)
         {
             if (!instance._connected)
@@ -1513,6 +1596,56 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        public static void StartMatchmaking(int gameID, int mapID)
+        {
+            if (!instance._connected)
+            {
+                if (OnStartMatchmaking != null)
+                {
+                    OnStartMatchmaking.Invoke(StartMatchmakingResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnStartMatchmaking != null)
+                {
+                    OnStartMatchmaking.Invoke(StartMatchmakingResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.JOIN_MATCHMAKING);
+                packet.Write(gameID);
+                packet.Write(mapID);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void StopMatchmaking()
+        {
+            if (!instance._connected)
+            {
+                if (OnStopMatchmaking != null)
+                {
+                    OnStopMatchmaking.Invoke(StopMatchmakingResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnStopMatchmaking != null)
+                {
+                    OnStopMatchmaking.Invoke(StopMatchmakingResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.LEAVE_MATCHMAKING);
+                SendTCPDataInternal(packet);
+            }
+        }
+
         public static void AnswerPartyInvite(string partyID, bool accept)
         {
             if (!instance._connected)
@@ -1573,12 +1706,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private enum InternalID
         {
-            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_ROOM_PLAYER = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15, CREATE_PARTY = 16, INVITE_PARTY = 17, LEAVE_PARTY = 18, KICK_PARTY_MEMBER = 19, JOIN_MATCHMAKING = 20, LEAVE_MATCHMAKING = 21, PARTY_UPDATED = 22, GET_FRIENDS = 23, ADD_FRIEND = 24, REMOVE_FRIEND = 25, FRIEND_UPDATED = 26, GET_PROFILE = 27, ANSWER_PARTY_INVITE = 28
+            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_GAME = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15, CREATE_PARTY = 16, INVITE_PARTY = 17, LEAVE_PARTY = 18, KICK_PARTY_MEMBER = 19, JOIN_MATCHMAKING = 20, LEAVE_MATCHMAKING = 21, PARTY_UPDATED = 22, GET_FRIENDS = 23, ADD_FRIEND = 24, REMOVE_FRIEND = 25, FRIEND_UPDATED = 26, GET_PROFILE = 27, ANSWER_PARTY_INVITE = 28, MATCHMAKING_STARTED = 29, MATCHMAKING_STOPPED = 30, LEAVE_GAME = 31, GAME_STARTED = 32
         }
 
         public enum PartyUpdateType
         {
-            PLAYER_JOINED = 1, PLAYER_LEFT = 2, PLAYER_KICKED = 3, MATCHMAKING_STARTED = 4, MATCHMAKING_STOPPED = 5
+            PLAYER_JOINED = 1, PLAYER_LEFT = 2, PLAYER_KICKED = 3
         }
 
         public enum AuthenticationResponse
@@ -1588,7 +1721,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum CreateRoomResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4, ARE_IN_A_PARTY = 5, ARE_IN_A_GAME = 6
         }
 
         public enum GetRoomsResponse
@@ -1598,7 +1731,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum JoinRoomResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4, WRONG_PASSWORD = 5, AT_FULL_CAPACITY = 6, ALREADY_GAME_STARTED = 7
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_IN_ANOTHER_ROOM = 4, WRONG_PASSWORD = 5, AT_FULL_CAPACITY = 6, ALREADY_GAME_STARTED = 7, ARE_IN_A_PARTY = 8, ARE_IN_A_GAME = 9
         }
 
         public enum LeaveRoomResponse
@@ -1613,7 +1746,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum RoomUpdateType
         {
-            UNKNOWN = 0, ROOM_DELETED = 1, PLAYER_JOINED = 2, PLAYER_LEFT = 3, PLAYER_STATUS_CHANGED = 4, PLAYER_KICKED = 5, GAME_STARTED = 6
+            UNKNOWN = 0, ROOM_DELETED = 1, PLAYER_JOINED = 2, PLAYER_LEFT = 3, PLAYER_STATUS_CHANGED = 4, PLAYER_KICKED = 5
         }
 
         public enum KickFromRoomResponse
@@ -1628,7 +1761,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum StartRoomResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4, DONT_HAVE_PERMISSION = 5
         }
 
         public enum ChangeOwnerResponse
@@ -1643,7 +1776,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum LeavePartyResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4, ARE_IN_A_ROOM = 5
         }
         
         public enum InvitePartyResponse
@@ -1653,12 +1786,27 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum InvitePartyAnswerResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_INVITED = 4, MAX_CAPACITY = 5, ALREADY_IN_PARTY = 6
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_INVITED = 4, MAX_CAPACITY = 5, ALREADY_IN_PARTY = 6, ARE_IN_A_ROOM = 7
         }
 
         public enum KickPartyResponse
         {
             UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4, DONT_HAVE_PERMISSION = 5, TARGET_NOT_FOUND = 6
+        }
+
+        public enum StartMatchmakingResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6, ALREADY_MATCHED = 7, PARTY_TOO_BIG = 8
+        }
+
+        public enum StopMatchmakingResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STOPPED = 6, ALREADY_MATCHED = 7
+        }
+
+        public enum LeaveGameResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_GAME = 4
         }
 
         private void _DestroyObject(int scene, string id, long account, Vector3 position)
@@ -1803,7 +1951,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private void _ChangeOwner(int scene, byte[] coData, long account, long newOwner)
         {
             List<NetworkObject> objects = Tools.Desrialize<List<NetworkObject>>(Tools.Decompress(coData));
-            List<NetworkObject> targets = new List<NetworkObject>();
+            // List<NetworkObject> targets = new List<NetworkObject>();
             for (int o = 0; o < objects.Count; o++)
             {
                 for (int i = 0; i < _sceneObjects.Count; i++)
