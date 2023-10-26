@@ -37,7 +37,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             RealtimeNetworking.OnDisconnectedFromServer += Disconnected;
             RealtimeNetworking.OnConnectingToServerResult += ConnectResult;
             RealtimeNetworking.OnPacketReceived += PacketReceived;
-            RealtimeNetworking.OnAuthentication += RealtimeNetworking_OnAuthenticationResponse;
+            RealtimeNetworking.OnAuthentication += OnAuthenticationResponse;
             RealtimeNetworking.OnGetRooms += OnGetRooms;
             RealtimeNetworking.OnCreateRoom += OnCreateRoom;
             RealtimeNetworking.OnJoinRoom += OnJoinRoom;
@@ -68,7 +68,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             }
         }
 
-        private void OnGameStarted()
+        private void OnGameStarted(int type, int map, Data.Extension extension)
         {
             isSpawnedPlayer = false;
             LoadGameScene();
@@ -80,7 +80,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             RealtimeNetworking.OnDisconnectedFromServer -= Disconnected;
             RealtimeNetworking.OnConnectingToServerResult -= ConnectResult;
             RealtimeNetworking.OnPacketReceived -= PacketReceived;
-            RealtimeNetworking.OnAuthentication -= RealtimeNetworking_OnAuthenticationResponse;
+            RealtimeNetworking.OnAuthentication -= OnAuthenticationResponse;
             RealtimeNetworking.OnGetRooms -= OnGetRooms;
             RealtimeNetworking.OnCreateRoom -= OnCreateRoom;
             RealtimeNetworking.OnJoinRoom -= OnJoinRoom;
@@ -130,7 +130,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             textLog.text = "Packet received from the server.";
         }
 
-        private void RealtimeNetworking_OnAuthenticationResponse(RealtimeNetworking.AuthenticationResponse response)
+        private void OnAuthenticationResponse(RealtimeNetworking.AuthenticationResponse response)
         {
             if(response == RealtimeNetworking.AuthenticationResponse.SUCCESSFULL)
             {

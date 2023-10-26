@@ -5,6 +5,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System.Collections.Generic;
     using System.IO;
     using System.IO.Compression;
+    using System.Net.Sockets;
+    using System.Net;
     using System.Security.Cryptography;
     using System.Text;
     using System.Threading.Tasks;
@@ -30,6 +32,15 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 target.Write(bytes, 0, count);
             }
+        }
+
+        public static int FindFreeTcpPort()
+        {
+            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            return port;
         }
 
         #region Encryption

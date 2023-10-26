@@ -3,6 +3,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.IO;
     using UnityEngine;
     using UnityEngine.SceneManagement;
 
@@ -29,7 +30,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event InvitePartyCallback OnInviteToParty;
         public static event InvitedToPartyCallback OnBeingInvitedToParty;
         public static event PartyUpdateCallback OnPartyUpdated;
-        public static event GetFriendsCallback OnGetFriends;
         public static event InvitePartyAnswerCallback OnAnswerPartyInvite;
         public static event GetPlayerCallback OnGetPlayerData;
         public static event KickPartyCallback OnKickPartyMember;
@@ -37,13 +37,26 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event StopMatchmakingCallback OnStopMatchmaking;
         public static event NoCallback OnMatchmakingStarted;
         public static event NoCallback OnMatchmakingStopped;
-        public static event NoCallback OnGameStarted;
+        public static event GameStartCallback OnGameStarted;
         public static event LeaveGameCallback OnLeaveGame;
+
+        // Friends
+        public static event GetFriendsCallback OnGetFriendsList;
+        public static event AddFrirndCallback OnSendFriendRequest;
+        public static event FriendRequestsCallback OnGetFriendRequestsSentList;
+        public static event FriendRequestsCallback OnGetFriendRequestsReceivedList;
+        public static event RemoveFrirndCallback OnRemoveFriend;
+        public static event FreindRequestAnswerCallback OnAnswerFriendRequest;
+
+        // Netcode
+        public static event NoCallback OnNetcodeServerExecuted;
+        public static event NetcodeCallback OnNetcodeServerReady;
         #endregion
 
         #region Callbacks
         public delegate void ActionCallback(bool successful);
         public delegate void NoCallback();
+        public delegate void GameStartCallback(int type, int map, Data.Extension extension);
         public delegate void PacketCallback(Packet packet);
         public delegate void AuthCallback(AuthenticationResponse response);
         public delegate void CreateRoomCallback(CreateRoomResponse response, Data.Room room);
@@ -59,7 +72,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void CreatePartyCallback(CreatePartyResponse response, Data.Party party);
         public delegate void LeavePartyCallback(LeavePartyResponse response);
         public delegate void PartyUpdateCallback(PartyUpdateType response, Data.Party party, Data.Player targetPlayer);
-        public delegate void GetFriendsCallback(List<Data.Friend> friends);
+        
         public delegate void GetPlayerCallback(long id, Data.PlayerProfile player);
         public delegate void InvitePartyCallback(InvitePartyResponse response);
         public delegate void InvitedToPartyCallback(Data.PlayerProfile player, string partyID);
@@ -68,6 +81,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void StartMatchmakingCallback(StartMatchmakingResponse response);
         public delegate void StopMatchmakingCallback(StopMatchmakingResponse response);
         public delegate void LeaveGameCallback(LeaveGameResponse response);
+        public delegate void NetcodeCallback(int port);
+
         #endregion
 
         private bool _initialized = false;
@@ -1013,21 +1028,81 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     break;
                 case InternalID.GET_FRIENDS:
                     int gfLen = packet.ReadInt();
-                    if (OnGetFriends != null)
+                    if (OnGetFriendsList != null)
                     {
                         if(gfLen > 0)
                         {
-                            OnGetFriends.Invoke(Tools.Desrialize<List<Data.Friend>>(Tools.Decompress(packet.ReadBytes(gfLen))));
+                            gfLen = packet.ReadInt();
+                            OnGetFriendsList.Invoke(Tools.Desrialize<List<Data.Friend>>(Tools.Decompress(packet.ReadBytes(gfLen))));
                         }
                         else
                         {
-                            OnGetFriends.Invoke(new List<Data.Friend>());
+                            OnGetFriendsList.Invoke(new List<Data.Friend>());
                         }
                     }
                     packet.Dispose();
                     break;
+                case InternalID.FRIEND_REQUESTS:
+                    int frsLen = packet.ReadInt();
+                    bool frsSe = packet.ReadBool();
+                    if (frsSe)
+                    {
+                        if (OnGetFriendRequestsSentList != null)
+                        {
+                            if (frsLen > 0)
+                            {
+                                frsLen = packet.ReadInt();
+                                OnGetFriendRequestsSentList.Invoke(Tools.Desrialize<List<Data.FriendRequest>>(Tools.Decompress(packet.ReadBytes(frsLen))));
+                            }
+                            else
+                            {
+                                OnGetFriendRequestsSentList.Invoke(new List<Data.FriendRequest>());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (OnGetFriendRequestsReceivedList != null)
+                        {
+                            if (frsLen > 0)
+                            {
+                                frsLen = packet.ReadInt();
+                                OnGetFriendRequestsReceivedList.Invoke(Tools.Desrialize<List<Data.FriendRequest>>(Tools.Decompress(packet.ReadBytes(frsLen))));
+                            }
+                            else
+                            {
+                                OnGetFriendRequestsReceivedList.Invoke(new List<Data.FriendRequest>());
+                            }
+                        }
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.ADD_FRIEND:
+                    if (OnSendFriendRequest != null)
+                    {
+                        int afRes = packet.ReadInt();
+                        OnSendFriendRequest.Invoke((AddFreindResponse)afRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.REMOVE_FRIEND:
+                    if (OnRemoveFriend != null)
+                    {
+                        int rfRes = packet.ReadInt();
+                        OnRemoveFriend.Invoke((RemoveFreindResponse)rfRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.ANSWER_FRIEND:
+                    if (OnAnswerFriendRequest != null)
+                    {
+                        int wfRes = packet.ReadInt();
+                        OnAnswerFriendRequest.Invoke((FreindRequestResponse)wfRes);
+                    }
+                    packet.Dispose();
+                    break;
                 case InternalID.GET_PROFILE:
-                    if (OnGetFriends != null)
+                    if (OnGetFriendsList != null)
                     {
                         int gpRes = packet.ReadInt();
                         long gpId = packet.ReadLong();
@@ -1124,7 +1199,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     _disconnected.Clear();
                     if (OnGameStarted != null)
                     {
-                        OnGameStarted.Invoke();
+                        OnGameStarted.Invoke(_game.room.gameID, _game.room.mapID, _game.extension);
                     }
                     packet.Dispose();
                     break;
@@ -1133,6 +1208,21 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     {
                         int lvGameRes = packet.ReadInt();
                         OnLeaveGame.Invoke((LeaveGameResponse)lvGameRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.NETCODE_INIT:
+                    if (OnNetcodeServerExecuted != null)
+                    {
+                        OnNetcodeServerExecuted.Invoke();
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.NETCODE_STARTED:
+                    if (OnNetcodeServerReady != null)
+                    {
+                        int ntPort = packet.ReadInt();
+                        OnNetcodeServerReady.Invoke(ntPort);
                     }
                     packet.Dispose();
                     break;
@@ -1424,7 +1514,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static void StartRoomGame()
+        public static void StartRoomGame(Data.Extension extension = Data.Extension.NONE)
         {
             if (!instance._connected)
             {
@@ -1444,6 +1534,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 Packet packet = new Packet();
                 packet.Write((int)InternalID.START_ROOM);
+                packet.Write((int)extension);
                 SendTCPDataInternal(packet);
             }
         }
@@ -1596,7 +1687,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static void StartMatchmaking(int gameID, int mapID)
+        public static void StartMatchmaking(int gameID, int mapID, Data.Extension extension = Data.Extension.NONE)
         {
             if (!instance._connected)
             {
@@ -1618,6 +1709,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 packet.Write((int)InternalID.JOIN_MATCHMAKING);
                 packet.Write(gameID);
                 packet.Write(mapID);
+                packet.Write((int)extension);
                 SendTCPDataInternal(packet);
             }
         }
@@ -1706,7 +1798,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private enum InternalID
         {
-            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_GAME = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15, CREATE_PARTY = 16, INVITE_PARTY = 17, LEAVE_PARTY = 18, KICK_PARTY_MEMBER = 19, JOIN_MATCHMAKING = 20, LEAVE_MATCHMAKING = 21, PARTY_UPDATED = 22, GET_FRIENDS = 23, ADD_FRIEND = 24, REMOVE_FRIEND = 25, FRIEND_UPDATED = 26, GET_PROFILE = 27, ANSWER_PARTY_INVITE = 28, MATCHMAKING_STARTED = 29, MATCHMAKING_STOPPED = 30, LEAVE_GAME = 31, GAME_STARTED = 32
+            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_GAME = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15, CREATE_PARTY = 16, INVITE_PARTY = 17, LEAVE_PARTY = 18, KICK_PARTY_MEMBER = 19, JOIN_MATCHMAKING = 20, LEAVE_MATCHMAKING = 21, PARTY_UPDATED = 22, GET_FRIENDS = 23, ADD_FRIEND = 24, REMOVE_FRIEND = 25, ANSWER_FRIEND = 26, GET_PROFILE = 27, ANSWER_PARTY_INVITE = 28, MATCHMAKING_STARTED = 29, MATCHMAKING_STOPPED = 30, LEAVE_GAME = 31, GAME_STARTED = 32, NETCODE_INIT = 33, NETCODE_STARTED = 34, FRIEND_REQUESTS = 35
         }
 
         public enum PartyUpdateType
@@ -1796,12 +1888,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum StartMatchmakingResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6, ALREADY_MATCHED = 7, PARTY_TOO_BIG = 8
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, DONT_HAVE_PERMISSION = 5, ALREADY_STARTED = 6, ALREADY_IN_MATCHMAKING = 7, PARTY_TOO_BIG = 8
         }
 
         public enum StopMatchmakingResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STOPPED = 6, ALREADY_MATCHED = 7
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_PARTY = 4, DONT_HAVE_PERMISSION = 5, ALREADY_STOPPED = 6, NOT_IN_MATCHMAKING = 7
         }
 
         public enum LeaveGameResponse
@@ -2033,6 +2125,211 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 SceneManager.LoadScene(sceneName);
             }
         }
+
+        public static string NetcodeServerIsReady(int port)
+        {
+            string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
+            string getPath = string.Format("{0}Load{1}", tempPath, Path.DirectorySeparatorChar);
+            if (Directory.Exists(getPath))
+            {
+                string[] files = Directory.GetFiles(getPath);
+                if (files != null && files.Length > 0)
+                {
+                    string id = File.ReadAllText(files[0]).Trim();
+                    File.Delete(files[0]);
+                    string setPath = string.Format("{0}Ready{1}", tempPath, Path.DirectorySeparatorChar);
+                    if (!Directory.Exists(setPath))
+                    {
+                        Directory.CreateDirectory(setPath);
+                    }
+                    string filePath = setPath + id + ".txt";
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                    }
+                    using (StreamWriter writer = File.CreateText(filePath))
+                    {
+                        writer.WriteLine(port.ToString());
+                    }
+                }
+            }
+            return string.Empty;
+        }
+
+        #region Friends
+
+        public delegate void AddFrirndCallback(AddFreindResponse response);
+        public delegate void RemoveFrirndCallback(RemoveFreindResponse response);
+        public delegate void FreindRequestAnswerCallback(FreindRequestResponse response);
+        public delegate void GetFriendsCallback(List<Data.Friend> friends);
+        public delegate void FriendRequestsCallback(List<Data.FriendRequest> requests);
+
+        public enum AddFreindResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_FOUND = 4, ALREADY_SENT = 5, ALREADY_FRIENDS = 6
+        }
+
+        public enum RemoveFreindResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_FOUND = 4, NOT_FRIENDS = 5
+        }
+
+        public enum FreindRequestResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_FOUND = 4
+        }
+
+        public static void GetFriendsList()
+        {
+            if (!instance._connected)
+            {
+                if (OnGetFriendsList != null)
+                {
+                    OnGetFriendsList.Invoke(new List<Data.Friend>());
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnGetFriendsList != null)
+                {
+                    OnGetFriendsList.Invoke(new List<Data.Friend>());
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.GET_FRIENDS);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void GetFriendRequestsSentList()
+        {
+            if (!instance._connected)
+            {
+                if (OnGetFriendRequestsSentList != null)
+                {
+                    OnGetFriendRequestsSentList.Invoke(new List<Data.FriendRequest>());
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnGetFriendRequestsSentList != null)
+                {
+                    OnGetFriendRequestsSentList.Invoke(new List<Data.FriendRequest>());
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.FRIEND_REQUESTS);
+                packet.Write(true);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void GetFriendRequestsReceivedList()
+        {
+            if (!instance._connected)
+            {
+                if (OnGetFriendRequestsReceivedList != null)
+                {
+                    OnGetFriendRequestsReceivedList.Invoke(new List<Data.FriendRequest>());
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnGetFriendRequestsReceivedList != null)
+                {
+                    OnGetFriendRequestsReceivedList.Invoke(new List<Data.FriendRequest>());
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.FRIEND_REQUESTS);
+                packet.Write(false);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void SendFriendsRequest(long playerID)
+        {
+            if (!instance._connected)
+            {
+                if (OnSendFriendRequest != null)
+                {
+                    OnSendFriendRequest.Invoke(AddFreindResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnSendFriendRequest != null)
+                {
+                    OnSendFriendRequest.Invoke(AddFreindResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.ADD_FRIEND);
+                packet.Write(playerID);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void RemoveFriend(long playerID)
+        {
+            if (!instance._connected)
+            {
+                if (OnRemoveFriend != null)
+                {
+                    OnRemoveFriend.Invoke(RemoveFreindResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnRemoveFriend != null)
+                {
+                    OnRemoveFriend.Invoke(RemoveFreindResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.REMOVE_FRIEND);
+                packet.Write(playerID);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void AnswerFriendRequest(long requestID, bool accept)
+        {
+            if (!instance._connected)
+            {
+                if (OnAnswerFriendRequest != null)
+                {
+                    OnAnswerFriendRequest.Invoke(FreindRequestResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnAnswerFriendRequest != null)
+                {
+                    OnAnswerFriendRequest.Invoke(FreindRequestResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.ANSWER_FRIEND);
+                packet.Write(requestID);
+                packet.Write(accept);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        #endregion
 
     }
 }
