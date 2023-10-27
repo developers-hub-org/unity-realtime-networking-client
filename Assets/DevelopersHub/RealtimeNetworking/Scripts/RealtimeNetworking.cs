@@ -15,8 +15,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event ActionCallback OnConnectingToServerResult;
         public static event PacketCallback OnPacketReceived;
         public static event AuthCallback OnAuthentication;
+        public static event GetPlayerCallback OnGetPlayerData;
+
+        // Room
+        public static event GetRoomsCallback OnGetRoomsList;
         public static event CreateRoomCallback OnCreateRoom;
-        public static event GetRoomsCallback OnGetRooms;
         public static event JoinRoomCallback OnJoinRoom;
         public static event LeaveRoomCallback OnLeaveRoom;
         public static event DeleteRoomCallback OnDeleteRoom;
@@ -24,21 +27,26 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event KickFromRoomCallback OnKickFromRoom;
         public static event RoomStatusCallback OnChangeRoomStatus;
         public static event StartRoomCallback OnRoomStartGame;
-        public static event ChangeOwnerCallback OnOwnerChanged;
+
+        // Party
         public static event CreatePartyCallback OnCreateParty;
         public static event LeavePartyCallback OnLeaveParty;
         public static event InvitePartyCallback OnInviteToParty;
         public static event InvitedToPartyCallback OnBeingInvitedToParty;
         public static event PartyUpdateCallback OnPartyUpdated;
         public static event InvitePartyAnswerCallback OnAnswerPartyInvite;
-        public static event GetPlayerCallback OnGetPlayerData;
         public static event KickPartyCallback OnKickPartyMember;
+
+        // Game
+        public static event ChangeOwnerCallback OnOwnerChanged;
+        public static event GameStartCallback OnGameStarted;
+        public static event LeaveGameCallback OnLeaveGame;
+
+        // Matchmaking
         public static event StartMatchmakingCallback OnStartMatchmaking;
         public static event StopMatchmakingCallback OnStopMatchmaking;
         public static event NoCallback OnMatchmakingStarted;
         public static event NoCallback OnMatchmakingStopped;
-        public static event GameStartCallback OnGameStarted;
-        public static event LeaveGameCallback OnLeaveGame;
 
         // Friends
         public static event GetFriendsCallback OnGetFriendsList;
@@ -49,7 +57,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event FreindRequestAnswerCallback OnAnswerFriendRequest;
 
         // Netcode
-        public static event NoCallback OnNetcodeServerExecuted;
+        public static event NoCallback OnNetcodeServerStarted;
         public static event NetcodeCallback OnNetcodeServerReady;
         #endregion
 
@@ -790,12 +798,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                     break;
                 case InternalID.GET_ROOMS:
-                    if (OnGetRooms != null)
+                    if (OnGetRoomsList != null)
                     {
                         int gtRoomsBytesLen = packet.ReadInt();
                         byte[] gtRoomsBytes = packet.ReadBytes(gtRoomsBytesLen);
                         List<Data.Room> gtRooms = Tools.Desrialize<List<Data.Room>>(Tools.Decompress(gtRoomsBytes));
-                        OnGetRooms.Invoke(GetRoomsResponse.SUCCESSFULL, gtRooms);
+                        OnGetRoomsList.Invoke(GetRoomsResponse.SUCCESSFULL, gtRooms);
                     }
                     packet.Dispose();
                     break;
@@ -1212,9 +1220,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     packet.Dispose();
                     break;
                 case InternalID.NETCODE_INIT:
-                    if (OnNetcodeServerExecuted != null)
+                    if (OnNetcodeServerStarted != null)
                     {
-                        OnNetcodeServerExecuted.Invoke();
+                        OnNetcodeServerStarted.Invoke();
                     }
                     packet.Dispose();
                     break;
@@ -1360,16 +1368,16 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             if (!instance._connected)
             {
-                if (OnGetRooms != null)
+                if (OnGetRoomsList != null)
                 {
-                    OnGetRooms.Invoke(GetRoomsResponse.NOT_CONNECTED, null);
+                    OnGetRoomsList.Invoke(GetRoomsResponse.NOT_CONNECTED, null);
                 }
             }
             else if (!instance._authenticated)
             {
-                if (OnGetRooms != null)
+                if (OnGetRoomsList != null)
                 {
-                    OnGetRooms.Invoke(GetRoomsResponse.NOT_AUTHENTICATED, null);
+                    OnGetRoomsList.Invoke(GetRoomsResponse.NOT_AUTHENTICATED, null);
                 }
             }
             else

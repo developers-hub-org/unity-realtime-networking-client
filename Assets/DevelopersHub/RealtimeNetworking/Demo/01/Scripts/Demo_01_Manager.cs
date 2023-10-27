@@ -38,7 +38,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             RealtimeNetworking.OnConnectingToServerResult += ConnectResult;
             RealtimeNetworking.OnPacketReceived += PacketReceived;
             RealtimeNetworking.OnAuthentication += OnAuthenticationResponse;
-            RealtimeNetworking.OnGetRooms += OnGetRooms;
+            RealtimeNetworking.OnGetRoomsList += OnGetRooms;
             RealtimeNetworking.OnCreateRoom += OnCreateRoom;
             RealtimeNetworking.OnJoinRoom += OnJoinRoom;
             RealtimeNetworking.OnRoomUpdated += OnRoomUpdated;
@@ -81,7 +81,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             RealtimeNetworking.OnConnectingToServerResult -= ConnectResult;
             RealtimeNetworking.OnPacketReceived -= PacketReceived;
             RealtimeNetworking.OnAuthentication -= OnAuthenticationResponse;
-            RealtimeNetworking.OnGetRooms -= OnGetRooms;
+            RealtimeNetworking.OnGetRoomsList -= OnGetRooms;
             RealtimeNetworking.OnCreateRoom -= OnCreateRoom;
             RealtimeNetworking.OnJoinRoom -= OnJoinRoom;
             RealtimeNetworking.OnRoomUpdated -= OnRoomUpdated;

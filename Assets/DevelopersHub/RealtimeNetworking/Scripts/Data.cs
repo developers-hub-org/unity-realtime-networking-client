@@ -87,7 +87,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum Extension
         {
-            NONE = 0, NETCODE = 1
+            NONE = 0, NETCODE_SERVER = 1
         }
 
     }
