@@ -328,11 +328,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
             if (_isConnected)
             {
                 _isConnected = false;
-                if (tcp.socket != null)
+                if (tcp != null && tcp.socket != null)
                 {
                     tcp.socket.Close();
                 }
-                if (udp.socket != null)
+                if (udp != null && udp.socket != null)
                 {
                     udp.socket.Close();
                 }
