@@ -12,7 +12,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.NetcodeForGameObjects
         [SerializeField] GameObject playerPrefab = null;
         [SerializeField] private Role _role = Role.Client; public Role role { get { return _role; } }
         [SerializeField] private float destroyServerAfterSecondsIfNoClientConnected = 300;
-        [SerializeField] private float rdestroyServeAfterSecondsWithoutAnyClient = 10;
+        [SerializeField] private float destroyServerAfterSecondsWithoutAnyClient = 10;
         private float timer = 0;
         private int clientsCount = 0;
         private bool atLeastOneClientConnected = false;
@@ -113,7 +113,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.NetcodeForGameObjects
                     else
                     {
                         timer += Time.deltaTime;
-                        if (timer >= rdestroyServeAfterSecondsWithoutAnyClient)
+                        if (timer >= destroyServerAfterSecondsWithoutAnyClient)
                         {
                             CloseServer();
                         }

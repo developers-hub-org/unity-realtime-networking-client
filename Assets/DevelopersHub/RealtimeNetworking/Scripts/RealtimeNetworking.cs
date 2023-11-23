@@ -4,6 +4,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System.Collections;
     using System.Collections.Generic;
     using System.IO;
+    using UnityEditor.Experimental.GraphView;
     using UnityEngine;
     using UnityEngine.SceneManagement;
     using static DevelopersHub.RealtimeNetworking.Client.Packet;
@@ -2136,7 +2137,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
         }
 
         private Data.RuntimeGame _netcodeGameData = null;
+        private Data.RuntimeResult _netcodeResult = null;
 
+        /// <summary>
+        /// Notifies the clients that the server is ready and they can connect.
+        /// </summary>
+        /// <param name="port">The port number which clients will connect through.</param>
         public static Data.RuntimeGame NetcodeServerIsReady(int port)
         {
             if (instance._netcodeGameData == null)
@@ -2179,13 +2185,47 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     string[] files = Directory.GetFiles(getPath);
                     if (files != null && files.Length > 0)
                     {
-                        string serializedData = File.ReadAllText(files[0]).Trim();
+                        string serializedData = File.ReadAllText(files[0]);
                         File.Delete(files[0]);
                         instance._netcodeGameData = Tools.Desrialize<Data.RuntimeGame>(Tools.DecompressString(serializedData));
                     }
                 }
             }
             return instance._netcodeGameData;
+        }
+
+        /// <summary>
+        /// Saves the result of the current Netcode game. Call this method only when the game is over.
+        /// Note that you can only call this method once and calling it multiple times will be ineffective.
+        /// The data passed to this method will be received in <c>OnGameResultReceived</c> method on the server Netcode class.
+        /// </summary>
+        /// <param name="result">The final result of the current game which contains the data about winners and scores.</param>
+        public static void NetcodeSaveGameResult(Data.RuntimeResult result)
+        {
+            if (result == null || instance._netcodeResult != null)
+            {
+                return;
+            }
+            instance._netcodeResult = result;
+            string serializedData = Tools.CompressString(Tools.Serialize<Data.RuntimeResult>(result));
+            string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
+            string setPath = string.Format("{0}Result{1}", tempPath, Path.DirectorySeparatorChar);
+            if (!Directory.Exists(setPath))
+            {
+                Directory.CreateDirectory(setPath);
+            }
+            string filePath = setPath + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff") + ".txt";
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+            /*
+            using (StreamWriter writer = File.CreateText(filePath))
+            {
+                writer.WriteLine(serializedData);
+            }
+            */
+            File.WriteAllText(filePath, serializedData);
         }
 
         #region Friends

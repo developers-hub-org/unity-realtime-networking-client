@@ -92,13 +92,17 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public class RuntimeEquipment
         {
-            public int id = 0;
+            public string name = string.Empty;
         }
 
         public class RuntimeCharacter
         {
             public string name = string.Empty;
             public int health = 100;
+            public int totalDamageDealt = 0;
+            public int kills = 0;
+            public int assists = 0;
+            public int deaths = 0;
             public List<RuntimeEquipment> equipments = new List<RuntimeEquipment>();
         }
 
@@ -116,6 +120,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
             public int gameID = 0;
             public int mapID = 0;
             public List<RuntimePlayer> players = new List<RuntimePlayer>();
+        }
+
+        public class RuntimeResult
+        {
+            public double duration = 0;
+            public RuntimeGame game = null;
         }
 
     }

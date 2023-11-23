@@ -29,7 +29,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
             if (!Application.isPlaying)
             {
-                NetworkObject[] networkObjects = FindObjectsOfType<NetworkObject>();
+                NetworkObject[] networkObjects = FindObjectsByType<NetworkObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
                 if (networkObjects != null && networkObjects.Length > 0)
                 {
                     for (int i = 0; i < networkObjects.Length; i++)
