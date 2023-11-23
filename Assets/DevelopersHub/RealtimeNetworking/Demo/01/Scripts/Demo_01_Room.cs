@@ -29,7 +29,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
         private void OnJoinClicked()
         {
             buttonJoin.interactable = false;
-            Demo_01_Manager manager = FindObjectOfType<Demo_01_Manager>();
+            Demo_01_Manager manager = FindFirstObjectByType<Demo_01_Manager>();
             if(manager != null)
             {
                 manager.JoinRoom(_id);

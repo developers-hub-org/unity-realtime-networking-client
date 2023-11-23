@@ -18,7 +18,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 		{
 			if (_initialized) { return; }
 			_initialized = true;
-			_instance = FindObjectOfType<ThreadDispatcher>();
+			_instance = FindFirstObjectByType<ThreadDispatcher>();
 			if (_instance == null)
 			{
 				_instance = new GameObject("ThreadDispatcher").AddComponent<ThreadDispatcher>();

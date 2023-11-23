@@ -6,6 +6,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System.IO;
     using UnityEngine;
     using UnityEngine.SceneManagement;
+    using static DevelopersHub.RealtimeNetworking.Client.Packet;
 
     public class RealtimeNetworking : MonoBehaviour
     {
@@ -172,7 +173,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             {
                 if (_instance == null)
                 {
-                    _instance = FindObjectOfType<RealtimeNetworking>();
+                    _instance = FindFirstObjectByType<RealtimeNetworking>();
                     if (_instance == null)
                     {
                         _instance = Client.instance.gameObject.AddComponent<RealtimeNetworking>();
@@ -187,8 +188,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             _scene = SceneManager.GetActiveScene();
             _sceneObjects.Clear();
-            NetworkObject[] obj = FindObjectsOfType<NetworkObject>(true);
-            if(obj != null)
+            NetworkObject[] obj = FindObjectsByType<NetworkObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            if (obj != null)
             {
                 _sceneObjects.AddRange(obj);
             }
@@ -644,7 +645,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             _sceneHostID = -1;
             _scene = scene;
             _sceneObjects.Clear();
-            NetworkObject[] obj = FindObjectsOfType<NetworkObject>(true);
+            NetworkObject[] obj = FindObjectsByType<NetworkObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             if (obj != null)
             {
                 _sceneObjects.AddRange(obj);
@@ -2134,34 +2135,57 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static string NetcodeServerIsReady(int port)
+        private Data.RuntimeGame _netcodeGameData = null;
+
+        public static Data.RuntimeGame NetcodeServerIsReady(int port)
         {
-            string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
-            string getPath = string.Format("{0}Load{1}", tempPath, Path.DirectorySeparatorChar);
-            if (Directory.Exists(getPath))
+            if (instance._netcodeGameData == null)
             {
-                string[] files = Directory.GetFiles(getPath);
-                if (files != null && files.Length > 0)
+                NetcodeGetGameData();
+            }
+            if (instance._netcodeGameData == null)
+            {
+                Debug.LogError("No game data found.");
+            }
+            else
+            {
+                string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
+                string setPath = string.Format("{0}Ready{1}", tempPath, Path.DirectorySeparatorChar);
+                if (!Directory.Exists(setPath))
                 {
-                    string id = File.ReadAllText(files[0]).Trim();
-                    File.Delete(files[0]);
-                    string setPath = string.Format("{0}Ready{1}", tempPath, Path.DirectorySeparatorChar);
-                    if (!Directory.Exists(setPath))
+                    Directory.CreateDirectory(setPath);
+                }
+                string filePath = setPath + instance._netcodeGameData.id + ".txt";
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+                using (StreamWriter writer = File.CreateText(filePath))
+                {
+                    writer.WriteLine(port.ToString());
+                }
+            }
+            return instance._netcodeGameData;
+        }
+        
+        public static Data.RuntimeGame NetcodeGetGameData()
+        {
+            if (instance._netcodeGameData == null)
+            {
+                string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
+                string getPath = string.Format("{0}Load{1}", tempPath, Path.DirectorySeparatorChar);
+                if (Directory.Exists(getPath))
+                {
+                    string[] files = Directory.GetFiles(getPath);
+                    if (files != null && files.Length > 0)
                     {
-                        Directory.CreateDirectory(setPath);
-                    }
-                    string filePath = setPath + id + ".txt";
-                    if (File.Exists(filePath))
-                    {
-                        File.Delete(filePath);
-                    }
-                    using (StreamWriter writer = File.CreateText(filePath))
-                    {
-                        writer.WriteLine(port.ToString());
+                        string serializedData = File.ReadAllText(files[0]).Trim();
+                        File.Delete(files[0]);
+                        instance._netcodeGameData = Tools.Desrialize<Data.RuntimeGame>(Tools.DecompressString(serializedData));
                     }
                 }
             }
-            return string.Empty;
+            return instance._netcodeGameData;
         }
 
         #region Friends

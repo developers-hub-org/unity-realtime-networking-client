@@ -28,7 +28,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
         private void Start()
         {
             health = 100;
-            _canvas = FindObjectOfType<Canvas>();
+            _canvas = FindFirstObjectByType<Canvas>();
             _camera = Camera.main;
             _object = GetComponent<NetworkObject>();
             if (_object != null && _object.isOwner)

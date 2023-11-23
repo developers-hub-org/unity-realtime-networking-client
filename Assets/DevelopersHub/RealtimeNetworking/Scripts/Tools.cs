@@ -125,6 +125,20 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        public async static Task<string> CompressStringAsync(string target)
+        {
+            Task<string> task = Task.Run(() =>
+            {
+                return CompressString(target);
+            });
+            return await task;
+        }
+
+        public static string CompressString(string target)
+        {
+            return Convert.ToBase64String(Compress(target));
+        }
+
         public async static Task<string> DecompressAsync(byte[] bytes)
         {
             Task<string> task = Task.Run(() =>
@@ -147,6 +161,20 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     return Encoding.UTF8.GetString(mso.ToArray());
                 }
             }
+        }
+
+        public async static Task<string> DecompressStringAsync(string target)
+        {
+            Task<string> task = Task.Run(() =>
+            {
+                return DecompressString(target);
+            });
+            return await task;
+        }
+
+        public static string DecompressString(string target)
+        {
+            return Decompress(Convert.FromBase64String(target));
         }
         #endregion
 

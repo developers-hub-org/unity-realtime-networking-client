@@ -33,7 +33,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
         private void OnKickClicked()
         {
             buttonKick.interactable = false;
-            Demo_01_Manager manager = FindObjectOfType<Demo_01_Manager>();
+            Demo_01_Manager manager = FindFirstObjectByType<Demo_01_Manager>();
             if (manager != null)
             {
                 manager.KickPlayer(_id);
@@ -43,7 +43,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
         private void OnReadyClicked()
         {
             buttonReady.interactable = false;
-            Demo_01_Manager manager = FindObjectOfType<Demo_01_Manager>();
+            Demo_01_Manager manager = FindFirstObjectByType<Demo_01_Manager>();
             if (manager != null)
             {
                 manager.ChangePlayerStatus(!_ready);
