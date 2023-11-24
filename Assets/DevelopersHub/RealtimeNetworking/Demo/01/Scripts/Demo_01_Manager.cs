@@ -130,7 +130,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             textLog.text = "Packet received from the server.";
         }
 
-        private void OnAuthenticationResponse(RealtimeNetworking.AuthenticationResponse response)
+        private void OnAuthenticationResponse(RealtimeNetworking.AuthenticationResponse response, Data.PlayerProfile data)
         {
             if(response == RealtimeNetworking.AuthenticationResponse.SUCCESSFULL)
             {

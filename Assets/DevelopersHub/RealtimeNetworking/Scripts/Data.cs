@@ -1,7 +1,6 @@
 namespace DevelopersHub.RealtimeNetworking.Client
 {
     using System;
-    using System.Collections;
     using System.Collections.Generic;
 
     public class Data
@@ -22,6 +21,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             public long id = 0;
             public string username = string.Empty;
+            public int coins = 0;
             public bool online = false;
             public DateTime login;
         }

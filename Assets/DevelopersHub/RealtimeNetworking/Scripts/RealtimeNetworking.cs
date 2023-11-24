@@ -4,10 +4,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
     using System.Collections;
     using System.Collections.Generic;
     using System.IO;
-    using UnityEditor.Experimental.GraphView;
     using UnityEngine;
     using UnityEngine.SceneManagement;
-    using static DevelopersHub.RealtimeNetworking.Client.Packet;
 
     public class RealtimeNetworking : MonoBehaviour
     {
@@ -68,7 +66,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void NoCallback();
         public delegate void GameStartCallback(int type, int map, Data.Extension extension);
         public delegate void PacketCallback(Packet packet);
-        public delegate void AuthCallback(AuthenticationResponse response);
+        public delegate void AuthCallback(AuthenticationResponse response, Data.PlayerProfile accountData = null);
         public delegate void CreateRoomCallback(CreateRoomResponse response, Data.Room room);
         public delegate void GetRoomsCallback(GetRoomsResponse response, List<Data.Room> rooms);
         public delegate void JoinRoomCallback(JoinRoomResponse response, Data.Room room);
@@ -771,6 +769,13 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     int authBanned = packet.ReadInt();
                     string authUser = packet.ReadString();
                     string authPass = packet.ReadString();
+                    Data.PlayerProfile authProfile = null;
+                    if (authRes == 1)
+                    {
+                        int authBytesLen = packet.ReadInt();
+                        byte[] authBytes = packet.ReadBytes(authBytesLen);
+                        authProfile = Tools.Desrialize<Data.PlayerProfile>(Tools.Decompress(authBytes));
+                    }
                     packet.Dispose();
                     if(authRes == (int)AuthenticationResponse.SUCCESSFULL)
                     {
@@ -781,7 +786,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     }
                     if (OnAuthentication != null)
                     {
-                        OnAuthentication.Invoke((AuthenticationResponse)authRes);
+                        OnAuthentication.Invoke((AuthenticationResponse)authRes, authProfile);
                     }
                     break;
                 case InternalID.CREATE_ROOM:
