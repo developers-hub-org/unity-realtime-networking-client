@@ -1944,7 +1944,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public enum AuthenticationResponse
         {
-            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, ALREADY_AUTHENTICATED = 4, USERNAME_TAKEN = 5, WRONG_CREDS = 6, BANNED = 7, INVALID_INPUT = 8
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, ANOTHER_ONLINE = 3, ALREADY_AUTHENTICATED = 4, USERNAME_TAKEN = 5, WRONG_CREDS = 6, BANNED = 7, INVALID_INPUT = 8
         }
 
         public enum CreateRoomResponse
