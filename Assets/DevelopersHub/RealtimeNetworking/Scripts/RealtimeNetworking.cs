@@ -89,8 +89,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void StartMatchmakingCallback(StartMatchmakingResponse response);
         public delegate void StopMatchmakingCallback(StopMatchmakingResponse response);
         public delegate void LeaveGameCallback(LeaveGameResponse response);
-        public delegate void NetcodeCallback(int port);
-
+        public delegate void NetcodeCallback(int port, Data.RuntimeGame gameData);
         #endregion
 
         private bool _initialized = false;
@@ -102,6 +101,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private string _usernameKey = "username";
         private string _passwordKey = "password";
+        private string _savesFolder = "Network";
+        private string _savesAccountName = "account.crd";
+        private string _savesPath = "";
+        private string _savesAccountPath = "";
 
         private Scene _scene = default; public static int sceneIndex { get { return instance._scene.buildIndex; } }
         private List<NetworkObject> _sceneObjects = new List<NetworkObject>();
@@ -132,17 +135,71 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             get
             {
-                return PlayerPrefs.HasKey(_passwordKey) ? PlayerPrefs.GetString(_passwordKey) : "";
-            }
-            set
-            {
-                if (string.IsNullOrEmpty(value))
+                if(Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.LinuxPlayer || Application.platform == RuntimePlatform.OSXPlayer)
                 {
-                    PlayerPrefs.DeleteKey(_passwordKey);
+                    string[] save = new string[] { "", "", "" };
+                    if (File.Exists(_savesAccountPath))
+                    {
+                        try
+                        {
+                            save = Tools.Desrialize<string[]>(Tools.DecompressString(File.ReadAllText(_savesAccountPath, System.Text.Encoding.UTF8)));
+                            if (save.Length != 3 || save[2] != SystemInfo.deviceUniqueIdentifier)
+                            {
+                                File.Delete(_savesAccountPath);
+                                save = new string[] { "", "", "" };
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            save = new string[] { "", "", "" };
+                        }
+                    }
+                    return save[1];
                 }
                 else
                 {
-                    PlayerPrefs.SetString(_passwordKey, value);
+                    return PlayerPrefs.HasKey(_passwordKey) ? PlayerPrefs.GetString(_passwordKey) : "";
+                }
+            }
+            set
+            {
+                if (Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.LinuxPlayer || Application.platform == RuntimePlatform.OSXPlayer)
+                {
+                    if (!Directory.Exists(_savesPath))
+                    {
+                        Directory.CreateDirectory(_savesPath);
+                    }
+                    string[] save = new string[] { "", "", "" };
+                    if (File.Exists(_savesAccountPath))
+                    {
+                        try
+                        {
+                            save = Tools.Desrialize<string[]>(Tools.DecompressString(File.ReadAllText(_savesAccountPath, System.Text.Encoding.UTF8)));
+                            if (save.Length != 3 || save[2] != SystemInfo.deviceUniqueIdentifier)
+                            {
+                                File.Delete(_savesAccountPath);
+                                save = new string[] { "", "", "" };
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            save = new string[] { "", "", "" };
+                        }
+                    }
+                    save[2] = SystemInfo.deviceUniqueIdentifier;
+                    save[1] = value;
+                    File.WriteAllText(_savesAccountPath, Tools.CompressString(Tools.Serialize<string[]>(save)), System.Text.Encoding.UTF8);
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        PlayerPrefs.DeleteKey(_passwordKey);
+                    }
+                    else
+                    {
+                        PlayerPrefs.SetString(_passwordKey, value);
+                    }
                 }
             }
         }
@@ -151,17 +208,71 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             get
             {
-                return PlayerPrefs.HasKey(_usernameKey) ? PlayerPrefs.GetString(_usernameKey) : "";
-            }
-            set
-            {
-                if (string.IsNullOrEmpty(value))
+                if (Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.LinuxPlayer || Application.platform == RuntimePlatform.OSXPlayer)
                 {
-                    PlayerPrefs.DeleteKey(_usernameKey);
+                    string[] save = new string[] { "", "", "" };
+                    if (File.Exists(_savesAccountPath))
+                    {
+                        try
+                        {
+                            save = Tools.Desrialize<string[]>(Tools.DecompressString(File.ReadAllText(_savesAccountPath, System.Text.Encoding.UTF8)));
+                            if (save.Length != 3 || save[2] != SystemInfo.deviceUniqueIdentifier)
+                            {
+                                File.Delete(_savesAccountPath);
+                                save = new string[] { "", "", "" };
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            save = new string[] { "", "", "" };
+                        }
+                    }
+                    return save[0];
                 }
                 else
                 {
-                    PlayerPrefs.SetString(_usernameKey, value);
+                    return PlayerPrefs.HasKey(_usernameKey) ? PlayerPrefs.GetString(_usernameKey) : "";
+                }
+            }
+            set
+            {
+                if (Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.LinuxPlayer || Application.platform == RuntimePlatform.OSXPlayer)
+                {
+                    if (!Directory.Exists(_savesPath))
+                    {
+                        Directory.CreateDirectory(_savesPath);
+                    }
+                    string[] save = new string[] { "", "", "" };
+                    if (File.Exists(_savesAccountPath))
+                    {
+                        try
+                        {
+                            save = Tools.Desrialize<string[]>(Tools.DecompressString(File.ReadAllText(_savesAccountPath, System.Text.Encoding.UTF8)));
+                            if (save.Length != 3 || save[2] != SystemInfo.deviceUniqueIdentifier)
+                            {
+                                File.Delete(_savesAccountPath);
+                                save = new string[] { "", "", "" };
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            save = new string[] { "", "", "" };
+                        }
+                    }
+                    save[2] = SystemInfo.deviceUniqueIdentifier;
+                    save[0] = value;
+                    File.WriteAllText(_savesAccountPath, Tools.CompressString(Tools.Serialize<string[]>(save)), System.Text.Encoding.UTF8);
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        PlayerPrefs.DeleteKey(_usernameKey);
+                    }
+                    else
+                    {
+                        PlayerPrefs.SetString(_usernameKey, value);
+                    }
                 }
             }
         }
@@ -202,6 +313,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 return;
             }
             Application.runInBackground = true;
+            _savesPath = Path.Combine(Application.dataPath, _savesFolder);
+            _savesAccountPath = Path.Combine(Application.dataPath, _savesFolder, _savesAccountName);
             _initialized = true;
         }
 
@@ -702,6 +815,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static void Connect()
         {
             Client.instance.ConnectToServer();
+        }
+
+        public static void Disconnect()
+        {
+            Client.instance._Disconnect();
         }
 
         public void _Connection(bool result)
@@ -1237,7 +1355,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     if (OnNetcodeServerReady != null)
                     {
                         int ntPort = packet.ReadInt();
-                        OnNetcodeServerReady.Invoke(ntPort);
+                        int ntBytesLen = packet.ReadInt();
+                        byte[] ntBytes = packet.ReadBytes(ntBytesLen);
+                        Data.RuntimeGame ntGame = Tools.Desrialize<Data.RuntimeGame>(Tools.Decompress(ntBytes));
+                        OnNetcodeServerReady.Invoke(ntPort, ntGame);
                     }
                     packet.Dispose();
                     break;
@@ -2141,8 +2262,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        private Data.RuntimeGame _netcodeGameData = null;
-        private Data.RuntimeResult _netcodeResult = null;
+        private static Data.RuntimeGame _netcodeGameData = null;
+        private static Data.RuntimeResult _netcodeResult = null;
+        private static bool _netcodeClosing = false;
 
         /// <summary>
         /// Notifies the clients that the server is ready and they can connect.
@@ -2150,11 +2272,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
         /// <param name="port">The port number which clients will connect through.</param>
         public static Data.RuntimeGame NetcodeServerIsReady(int port)
         {
-            if (instance._netcodeGameData == null)
+            if (_netcodeGameData == null)
             {
                 NetcodeGetGameData();
             }
-            if (instance._netcodeGameData == null)
+            if (_netcodeGameData == null)
             {
                 Debug.LogError("No game data found.");
             }
@@ -2166,7 +2288,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 {
                     Directory.CreateDirectory(setPath);
                 }
-                string filePath = setPath + instance._netcodeGameData.id + ".txt";
+                string filePath = setPath + _netcodeGameData.id + ".txt";
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
@@ -2176,12 +2298,12 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     writer.WriteLine(port.ToString());
                 }
             }
-            return instance._netcodeGameData;
+            return _netcodeGameData;
         }
         
         public static Data.RuntimeGame NetcodeGetGameData()
         {
-            if (instance._netcodeGameData == null)
+            if (_netcodeGameData == null)
             {
                 string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
                 string getPath = string.Format("{0}Load{1}", tempPath, Path.DirectorySeparatorChar);
@@ -2192,11 +2314,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     {
                         string serializedData = File.ReadAllText(files[0]);
                         File.Delete(files[0]);
-                        instance._netcodeGameData = Tools.Desrialize<Data.RuntimeGame>(Tools.DecompressString(serializedData));
+                        _netcodeGameData = Tools.Desrialize<Data.RuntimeGame>(Tools.DecompressString(serializedData));
                     }
                 }
             }
-            return instance._netcodeGameData;
+            return _netcodeGameData;
         }
 
         /// <summary>
@@ -2207,11 +2329,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
         /// <param name="result">The final result of the current game which contains the data about winners and scores.</param>
         public static void NetcodeSaveGameResult(Data.RuntimeResult result)
         {
-            if (result == null || instance._netcodeResult != null)
+            if (result == null || _netcodeResult != null)
             {
                 return;
             }
-            instance._netcodeResult = result;
+            _netcodeResult = result;
             string serializedData = Tools.CompressString(Tools.Serialize<Data.RuntimeResult>(result));
             string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
             string setPath = string.Format("{0}Result{1}", tempPath, Path.DirectorySeparatorChar);
@@ -2231,6 +2353,37 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
             */
             File.WriteAllText(filePath, serializedData);
+            NetcodeCloseServer();
+        }
+
+        /// <summary>
+        /// Kill the process of the current Netcode game server. Call this method only when the game is over.
+        /// Note that you can only call this method once and calling it multiple times will be ineffective.
+        /// </summary>
+        public static void NetcodeCloseServer()
+        {
+            if (_netcodeClosing)
+            {
+                return;
+            }
+            NetcodeGetGameData();
+            if (_netcodeGameData == null)
+            {
+                return;
+            }
+            _netcodeClosing = true;
+            string tempPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar) + string.Format("{0}RealtimeNetworking{0}Extentions{0}Netcode", Path.DirectorySeparatorChar);
+            string setPath = string.Format("{0}Close{1}", tempPath, Path.DirectorySeparatorChar);
+            if (!Directory.Exists(setPath))
+            {
+                Directory.CreateDirectory(setPath);
+            }
+            string filePath = setPath + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff") + ".txt";
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+            File.WriteAllText(filePath, _netcodeGameData.id);
         }
 
         #region Friends

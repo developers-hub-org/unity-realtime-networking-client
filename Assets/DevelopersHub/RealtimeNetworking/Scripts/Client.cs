@@ -323,6 +323,11 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        public void _Disconnect()
+        {
+            Disconnect();
+        }
+
         private void Disconnect()
         {
             if (_isConnected)
