@@ -17,7 +17,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event AuthCallback OnAuthentication;
         public static event GetPlayerCallback OnGetPlayerData;
         public static event PurchaseCallback OnPurchaseResult;
-
         public static event CharactersCallback OnGetCharacters;
         public static event EquipmentsCallback OnGetEquipments;
         public static event SetCharacterSelectedCallback OnSetCharacterSelected;
