@@ -16,6 +16,13 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public static event PacketCallback OnPacketReceived;
         public static event AuthCallback OnAuthentication;
         public static event GetPlayerCallback OnGetPlayerData;
+        public static event PurchaseCallback OnPurchaseResult;
+
+        public static event CharactersCallback OnGetCharacters;
+        public static event EquipmentsCallback OnGetEquipments;
+        public static event SetCharacterSelectedCallback OnSetCharacterSelected;
+        public static event SetEquipmentStatusCallback OnEquipCharacterEquipment;
+        public static event SetEquipmentStatusCallback OnUnquipCharacterEquipment;
 
         // Room
         public static event GetRoomsCallback OnGetRoomsList;
@@ -63,8 +70,9 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         #region Callbacks
         public delegate void ActionCallback(bool successful);
+        public delegate void PurchaseCallback(Data.PurchaseResult result, int catagory, int id, int level, int currency, int price);
         public delegate void NoCallback();
-        public delegate void GameStartCallback(int type, int map, Data.Extension extension);
+        public delegate void GameStartCallback(Data.RuntimeGame data);
         public delegate void PacketCallback(Packet packet);
         public delegate void AuthCallback(AuthenticationResponse response, Data.PlayerProfile accountData = null);
         public delegate void CreateRoomCallback(CreateRoomResponse response, Data.Room room);
@@ -80,7 +88,10 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public delegate void CreatePartyCallback(CreatePartyResponse response, Data.Party party);
         public delegate void LeavePartyCallback(LeavePartyResponse response);
         public delegate void PartyUpdateCallback(PartyUpdateType response, Data.Party party, Data.Player targetPlayer);
-        
+        public delegate void CharactersCallback(GeneralResponse response, List<Data.RuntimeCharacter> characters);
+        public delegate void EquipmentsCallback(GeneralResponse response, List<Data.RuntimeEquipment> characters);
+        public delegate void SetCharacterSelectedCallback(SetCharacterSelectedResponse response);
+        public delegate void SetEquipmentStatusCallback(SetEquipmentStatusResponse response);
         public delegate void GetPlayerCallback(long id, Data.PlayerProfile player);
         public delegate void InvitePartyCallback(InvitePartyResponse response);
         public delegate void InvitedToPartyCallback(Data.PlayerProfile player, string partyID);
@@ -114,7 +125,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
         private int _maxDestroydTrack = 10;
         private List<string> _destroyed = new List<string>();
         private Data.Room _room = null;
-        private Data.Game _game = null;
+        private Data.RuntimeGame _game = null;
         private int _ticksPerSecond = 10;
         private int _ticksCalled = 0;
         private float _ticksTimer = 0;
@@ -1321,10 +1332,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 case InternalID.GAME_STARTED:
                     int stBytesLen = packet.ReadInt();
                     byte[] stBytes = packet.ReadBytes(stBytesLen);
-                    _game = Tools.Desrialize<Data.Game>(Tools.Decompress(stBytes));
-                    // upBytesLen = packet.ReadInt();
-                    // upBytes = packet.ReadBytes(upBytesLen);
-                    // Data.Player stPlayer = Tools.Desrialize<Data.Player>(Tools.Decompress(upBytes));
+                    _game = Tools.Desrialize<Data.RuntimeGame>(Tools.Decompress(stBytes));
                     _globalObjects.Clear();
                     _inGame = true;
                     _ticksTimer = 0;
@@ -1332,7 +1340,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                     _disconnected.Clear();
                     if (OnGameStarted != null)
                     {
-                        OnGameStarted.Invoke(_game.room.gameID, _game.room.mapID, _game.extension);
+                        OnGameStarted.Invoke(_game);
                     }
                     packet.Dispose();
                     break;
@@ -1359,6 +1367,65 @@ namespace DevelopersHub.RealtimeNetworking.Client
                         byte[] ntBytes = packet.ReadBytes(ntBytesLen);
                         Data.RuntimeGame ntGame = Tools.Desrialize<Data.RuntimeGame>(Tools.Decompress(ntBytes));
                         OnNetcodeServerReady.Invoke(ntPort, ntGame);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.PURCHASE:
+                    int purRes = packet.ReadInt();
+                    int purCat = packet.ReadInt();
+                    int purID = packet.ReadInt();
+                    int purLvl = packet.ReadInt();
+                    int purCur = packet.ReadInt();
+                    int purPrc = packet.ReadInt();
+                    packet.Dispose();
+                    if (OnPurchaseResult != null)
+                    {
+                        OnPurchaseResult.Invoke((Data.PurchaseResult)purRes, purCat, purID, purLvl, purCur, purPrc);
+                    }
+                    break;
+                case InternalID.GET_CHARACTERS:
+                    if (OnGetCharacters != null)
+                    {
+                        int gcRes = packet.ReadInt();
+                        int gcBytesLen = packet.ReadInt();
+                        byte[] gcBytes = packet.ReadBytes(gcBytesLen);
+                        List<Data.RuntimeCharacter> gcList = Tools.Desrialize<List<Data.RuntimeCharacter>>(Tools.Decompress(gcBytes));
+                        OnGetCharacters.Invoke(GeneralResponse.SUCCESSFULL, gcList);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.GET_EQUIPMENTS:
+                    if (OnGetEquipments != null)
+                    {
+                        int geRes = packet.ReadInt();
+                        int geBytesLen = packet.ReadInt();
+                        byte[] geBytes = packet.ReadBytes(geBytesLen);
+                        List<Data.RuntimeEquipment> geList = Tools.Desrialize<List<Data.RuntimeEquipment>>(Tools.Decompress(geBytes));
+                        OnGetEquipments.Invoke(GeneralResponse.SUCCESSFULL, geList);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.CHARACTER_EQUIP:
+                    if (OnEquipCharacterEquipment != null)
+                    {
+                        int ceqRes = packet.ReadInt();
+                        OnEquipCharacterEquipment.Invoke((SetEquipmentStatusResponse)ceqRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.CHARACTER_UNEQUIP:
+                    if (OnUnquipCharacterEquipment != null)
+                    {
+                        int cuqRes = packet.ReadInt();
+                        OnUnquipCharacterEquipment.Invoke((SetEquipmentStatusResponse)cuqRes);
+                    }
+                    packet.Dispose();
+                    break;
+                case InternalID.SET_CHARACTER_SELECTED:
+                    if (OnSetCharacterSelected != null)
+                    {
+                        int schRes = packet.ReadInt();
+                        OnSetCharacterSelected.Invoke((SetCharacterSelectedResponse)schRes);
                     }
                     packet.Dispose();
                     break;
@@ -1625,6 +1692,34 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
+        public static void PurchaseItem(int category, int id, int level, int currency)
+        {
+            if (!instance._connected)
+            {
+                if (OnPurchaseResult != null)
+                {
+                    OnPurchaseResult.Invoke(Data.PurchaseResult.Unknown, category, id, level, currency, 0);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnPurchaseResult != null)
+                {
+                    OnPurchaseResult.Invoke(Data.PurchaseResult.Unknown, category, id, level, currency, 0);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.PURCHASE);
+                packet.Write(category);
+                packet.Write(id);
+                packet.Write(level);
+                packet.Write(currency);
+                SendTCPDataInternal(packet);
+            }
+        }
+
         public static void ChangeRoomStatus(bool ready)
         {
             if (!instance._connected)
@@ -1720,6 +1815,138 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 Packet packet = new Packet();
                 packet.Write((int)InternalID.GET_PROFILE);
                 packet.Write(id);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void GetCharacters(long accountID, bool onlySelected, bool includeEquipments)
+        {
+            if (!instance._connected)
+            {
+                if (OnGetCharacters != null)
+                {
+                    OnGetCharacters.Invoke(GeneralResponse.NOT_CONNECTED, null);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnGetCharacters != null)
+                {
+                    OnGetCharacters.Invoke(GeneralResponse.NOT_AUTHENTICATED, null);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.GET_CHARACTERS);
+                packet.Write(accountID);
+                packet.Write(onlySelected);
+                packet.Write(includeEquipments);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void GetEquipments(long accountID, bool excludeEquipped)
+        {
+            if (!instance._connected)
+            {
+                if (OnGetEquipments != null)
+                {
+                    OnGetEquipments.Invoke(GeneralResponse.NOT_CONNECTED, null);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnGetEquipments != null)
+                {
+                    OnGetEquipments.Invoke(GeneralResponse.NOT_AUTHENTICATED, null);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.GET_EQUIPMENTS);
+                packet.Write(accountID);
+                packet.Write(excludeEquipped);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void SetCharacterSelectedStaus(long characterID, bool selected, bool deselectOthers)
+        {
+            if (!instance._connected)
+            {
+                if (OnSetCharacterSelected != null)
+                {
+                    OnSetCharacterSelected.Invoke(SetCharacterSelectedResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnSetCharacterSelected != null)
+                {
+                    OnSetCharacterSelected.Invoke(SetCharacterSelectedResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.SET_CHARACTER_SELECTED);
+                packet.Write(characterID);
+                packet.Write(selected);
+                packet.Write(deselectOthers);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void EquipCharacterEquipment(long characterID, long equipmentID)
+        {
+            if (!instance._connected)
+            {
+                if (OnEquipCharacterEquipment != null)
+                {
+                    OnEquipCharacterEquipment.Invoke(SetEquipmentStatusResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnEquipCharacterEquipment != null)
+                {
+                    OnEquipCharacterEquipment.Invoke(SetEquipmentStatusResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.CHARACTER_EQUIP);
+                packet.Write(characterID);
+                packet.Write(equipmentID);
+                SendTCPDataInternal(packet);
+            }
+        }
+
+        public static void UnquipCharacterEquipment(long characterID, long equipmentID)
+        {
+            if (!instance._connected)
+            {
+                if (OnUnquipCharacterEquipment != null)
+                {
+                    OnUnquipCharacterEquipment.Invoke(SetEquipmentStatusResponse.NOT_CONNECTED);
+                }
+            }
+            else if (!instance._authenticated)
+            {
+                if (OnUnquipCharacterEquipment != null)
+                {
+                    OnUnquipCharacterEquipment.Invoke(SetEquipmentStatusResponse.NOT_AUTHENTICATED);
+                }
+            }
+            else
+            {
+                Packet packet = new Packet();
+                packet.Write((int)InternalID.CHARACTER_UNEQUIP);
+                packet.Write(characterID);
+                packet.Write(equipmentID);
                 SendTCPDataInternal(packet);
             }
         }
@@ -1934,7 +2161,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         private enum InternalID
         {
-            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_GAME = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15, CREATE_PARTY = 16, INVITE_PARTY = 17, LEAVE_PARTY = 18, KICK_PARTY_MEMBER = 19, JOIN_MATCHMAKING = 20, LEAVE_MATCHMAKING = 21, PARTY_UPDATED = 22, GET_FRIENDS = 23, ADD_FRIEND = 24, REMOVE_FRIEND = 25, ANSWER_FRIEND = 26, GET_PROFILE = 27, ANSWER_PARTY_INVITE = 28, MATCHMAKING_STARTED = 29, MATCHMAKING_STOPPED = 30, LEAVE_GAME = 31, GAME_STARTED = 32, NETCODE_INIT = 33, NETCODE_STARTED = 34, FRIEND_REQUESTS = 35
+            AUTH = 1, GET_ROOMS = 2, CREATE_ROOM = 3, JOIN_ROOM = 4, LEAVE_ROOM = 5, DELETE_ROOM = 6, ROOM_UPDATED = 7, KICK_FROM_ROOM = 8, STATUS_IN_ROOM = 9, START_ROOM = 10, SYNC_GAME = 11, SET_HOST = 12, DESTROY_OBJECT = 13, CHANGE_OWNER = 14, CHANGE_OWNER_CONFIRM = 15, CREATE_PARTY = 16, INVITE_PARTY = 17, LEAVE_PARTY = 18, KICK_PARTY_MEMBER = 19, JOIN_MATCHMAKING = 20, LEAVE_MATCHMAKING = 21, PARTY_UPDATED = 22, GET_FRIENDS = 23, ADD_FRIEND = 24, REMOVE_FRIEND = 25, ANSWER_FRIEND = 26, GET_PROFILE = 27, ANSWER_PARTY_INVITE = 28, MATCHMAKING_STARTED = 29, MATCHMAKING_STOPPED = 30, LEAVE_GAME = 31, GAME_STARTED = 32, NETCODE_INIT = 33, NETCODE_STARTED = 34, FRIEND_REQUESTS = 35, PURCHASE = 36, GET_CHARACTERS = 37, GET_EQUIPMENTS = 38, SET_CHARACTER_SELECTED = 39, CHARACTER_EQUIP = 40, CHARACTER_UNEQUIP = 41
         }
 
         public enum PartyUpdateType
@@ -1965,6 +2192,21 @@ namespace DevelopersHub.RealtimeNetworking.Client
         public enum LeaveRoomResponse
         {
             UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_IN_ANY_ROOM = 4
+        }
+
+        public enum GeneralResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3
+        }
+
+        public enum SetCharacterSelectedResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_FOUND = 4
+        }
+
+        public enum SetEquipmentStatusResponse
+        {
+            UNKNOWN = 0, SUCCESSFULL = 1, NOT_CONNECTED = 2, NOT_AUTHENTICATED = 3, NOT_FOUND = 4
         }
 
         public enum DeleteRoomResponse

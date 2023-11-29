@@ -68,7 +68,7 @@ namespace DevelopersHub.RealtimeNetworking.Client.Demo
             }
         }
 
-        private void OnGameStarted(int type, int map, Data.Extension extension)
+        private void OnGameStarted(Data.RuntimeGame data)
         {
             isSpawnedPlayer = false;
             LoadGameScene();

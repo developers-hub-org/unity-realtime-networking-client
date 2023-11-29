@@ -5,7 +5,6 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
     public class Data
     {
-
         public class Player
         {
             public long id = 0;
@@ -22,6 +21,8 @@ namespace DevelopersHub.RealtimeNetworking.Client
             public long id = 0;
             public string username = string.Empty;
             public int coins = 0;
+            public int level = 1;
+            public int xp = 0;
             public bool online = false;
             public DateTime login;
         }
@@ -77,12 +78,18 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public class Game
         {
-            public Data.Room room = null;
+            public Room room = null;
             public DateTime start;
             public GameType type = GameType.HOSTED;
             public Extension extension = Extension.NONE;
+            public GameCustomData customData = new GameCustomData();
             public List<int> sceneHostsKeys = new List<int>();
             public List<long> sceneHostsValues = new List<long>();
+        }
+
+        public class GameCustomData
+        {
+
         }
 
         public enum Extension
@@ -92,13 +99,31 @@ namespace DevelopersHub.RealtimeNetworking.Client
 
         public class RuntimeEquipment
         {
+            public long id = 0;
+            public long characterID = 0;
+            public int prefabID = 0;
             public string name = string.Empty;
+            public string customName = string.Empty;
+            public int level = 1;
+            public int armor = 10;
+            public int damage = 20;
+            public int range = 100;
+            public int speed = 1;
+            public int capacity = 1;
         }
 
         public class RuntimeCharacter
         {
+            public long id = 0;
+            public int prefabID = 0;
             public string name = string.Empty;
+            public string customName = string.Empty;
+            public bool selected = false;
+            public int xp = 0;
+            public int level = 1;
             public int health = 100;
+            public int damage = 1;
+            public int speed = 1;
             public int totalDamageDealt = 0;
             public int kills = 0;
             public int assists = 0;
@@ -126,6 +151,19 @@ namespace DevelopersHub.RealtimeNetworking.Client
         {
             public double duration = 0;
             public RuntimeGame game = null;
+        }
+
+        public class Color
+        {
+            public float r;
+            public float g;
+            public float b;
+            public float a;
+        }
+
+        public enum PurchaseResult
+        {
+            Unknown = 0, Successful = 1, InsufficientFunds = 2, NotAvailable = 3
         }
 
     }
