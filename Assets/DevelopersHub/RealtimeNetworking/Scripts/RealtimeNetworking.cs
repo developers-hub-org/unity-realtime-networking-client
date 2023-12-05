@@ -1898,7 +1898,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
             }
         }
 
-        public static void EquipCharacterEquipment(long characterID, long equipmentID)
+        public static void EquipCharacterEquipment(long characterID, long equipmentID, bool unequipOthersOfThisType)
         {
             if (!instance._connected)
             {
@@ -1920,6 +1920,7 @@ namespace DevelopersHub.RealtimeNetworking.Client
                 packet.Write((int)InternalID.CHARACTER_EQUIP);
                 packet.Write(characterID);
                 packet.Write(equipmentID);
+                packet.Write(unequipOthersOfThisType);
                 SendTCPDataInternal(packet);
             }
         }
