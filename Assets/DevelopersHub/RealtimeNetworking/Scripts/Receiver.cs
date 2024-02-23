@@ -11,13 +11,13 @@ namespace DevelopersHub.RealtimeNetworking.Client
             int id = packet.ReadInt();
             string receiveToken = packet.ReadString();
             string sendToken = Tools.GenerateToken();
-            Client.instance.ConnectionResponse(true, id, sendToken, receiveToken);
             using (Packet response = new Packet((int)Packet.ID.INITIALIZATION))
             {
-                response.Write(receiveToken);
+                response.Write(sendToken);
                 response.WriteLength();
                 Client.instance.tcp.SendData(response);
             }
+            Client.instance.ConnectionResponse(true, id, sendToken, receiveToken);
             Client.instance.udp.Connect(((IPEndPoint)Client.instance.tcp.socket.Client.LocalEndPoint).Port);
         }
 
